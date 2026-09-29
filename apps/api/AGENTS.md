@@ -38,6 +38,22 @@ apps/api/src/
 
 Create a layer folder only when the module needs it (see Progressive Layering). Never add empty layers.
 
+## Vertical Structure (Modules)
+
+The app is split **vertically by business capability**, not horizontally by technical layer. A module owns everything for its capability, from the HTTP endpoint down to persistence.
+
+- One folder per capability under `src/modules/<ctx>/` (kebab-case, singular business noun: `greeting`, `order`, `article`). It contains its own `presentation/`, `application/`, `domain/`, `infrastructure/` and `<ctx>.module.ts`
+- **MUST NOT create horizontal top-level folders** such as `src/controllers/`, `src/services/`, `src/dtos/`, `src/repositories/`, `src/entities/`, `src/utils/`, `src/common/`. Everything in `src/` is one of: `main.ts`, `app.module.ts`, `app/` (wiring), `modules/`, `shared-kernel/`
+- **A feature change touches one module.** Adding "refunds" means adding or editing `modules/order/` (or a new `modules/refund/`), not a file in every layer folder of the app. If a change needs edits in three modules, the boundaries are probably wrong: stop and ask
+- Each module is registered exactly once, in `AppModule.imports`. Nothing else imports a `*.module.ts` of a module
+- A module exposes only two things to other modules: **ports** (`application/ports/`) and **domain events** (`domain/events/`). Everything else is private (enforced by `no-cross-module`)
+- Tests, DTOs, errors, and mappers live inside the module that owns them, next to the code (`foo.ts` + `foo.spec.ts`)
+- **New module vs extend**: create a new module when the capability has its own vocabulary, data, and rules that other modules would consume through a contract. Extend an existing module when the code shares its aggregate or data. Unsure → ask
+- **Sharing**: do not extract shared code up front. Copy small helpers per module; promote to `shared-kernel/` when the second consumer appears (see shared-kernel Admission). `app/` is wiring, never a home for business helpers
+- Layers inside a module still follow Progressive Layering: start thin, add a layer on a signal. Vertical structure never means "create all four folders for every module"
+
+When stuck: about to put a file in a folder named after a technical role at the `src/` level → put it in the owning module instead.
+
 ## Dependency Direction
 
 - **[enforced]** No import cycles anywhere (`no-circular`, `import/no-cycle`)

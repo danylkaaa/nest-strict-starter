@@ -48,7 +48,7 @@ Single package: `pnpm --filter api <script>`.
 - Functional-first: prefer pure functions and immutable data; keep side effects in infrastructure
 - One response envelope for the whole API: `{ ok: true, data }` or `{ ok: false, error: { code, message } }` (see `apps/api/AGENTS.md`)
 - Errors as values: expected failures are `neverthrow` `Result`s, not exceptions (see `apps/api/AGENTS.md`)
-- Organize by business capability (`modules/<context>/`), not by technical layer
+- Organize vertically by business capability (`modules/<context>/`), not by technical layer; each module owns its full stack (see `apps/api/AGENTS.md`, Vertical Structure)
 
 ## Quality Gates
 
