@@ -25,7 +25,7 @@ You review changes in `apps/api` against (1) the spec you are given and (2) this
 - **Errors**: expected failures are `Result`s carrying `BusinessError` classes with friendly messages; controllers convert to `HttpError` via an exhaustive mapping and return `Result<Dto, HttpError>`; no throwing for expected failures; no `_unsafeUnwrap`
 - **DTOs**: request and response types are zod DTOs (`nestjs-zod`) in `presentation/dtos/`; schemas validate shape only, business rules stay in the domain; responses built with `Dto.create`
 - **Config and logging**: no `process.env` outside config; no `console.*`; scoped `PinoLogger` where logging is needed; no secrets or personal data in logs
-- **Tests**: behavior and failure paths covered by colocated specs; tests assert real behavior (not just that code runs); no `skip`/`only`; domain tests avoid the Nest container
+- **Tests** (rules in `.claude/skills/write-unit-tests/SKILL.md`): behavior and failure paths covered by colocated specs; tests assert real behavior (not just that code runs); no `skip`/`only`; domain tests avoid the Nest container
 - **Tooling integrity**: no lint disables, no config or rule changes to get green, no ignored errors
 - **Scope**: no unrequested features, refactors, or files; `apps/api/AGENTS.md` updated when a pattern was introduced or changed
 - **Correctness and security**: logic errors, unhandled edge cases, injection or auth gaps, resource leaks
