@@ -30,7 +30,7 @@ describe('response envelope', () => {
     expect(response.status).toBe(400)
     expect(response.body).toEqual({
       ok: false,
-      error: { code: 'GREETING_NAME_EMPTY', message: 'Name must not be empty' },
+      error: { code: 'BAD_REQUEST', message: 'Please enter a name.' },
     })
   })
 

@@ -1,12 +1,11 @@
 import { HttpException, HttpStatus } from '@nestjs/common'
 
-import { ApiException } from '@/app/http/api-exception.js'
 import { failure } from '@/app/http/envelope.js'
+import { HttpError, InternalServerError } from '@/app/http/http-errors.js'
 
 import type { ErrorEnvelope } from '@/app/http/envelope.js'
 
 const BAD_REQUEST = 400
-const INTERNAL_MESSAGE = 'Internal server error'
 
 function messageOf(exception: HttpException): { message: string; isList: boolean } {
   const response = exception.getResponse()
@@ -18,13 +17,11 @@ function messageOf(exception: HttpException): { message: string; isList: boolean
 
 /** Pure mapping from any thrown value to an HTTP status and the error envelope body. */
 export function toErrorEnvelope(exception: unknown): { status: number; body: ErrorEnvelope } {
-  if (exception instanceof ApiException) {
-    return {
-      status: exception.getStatus(),
-      body: failure(exception.code, exception.message),
-    }
+  if (exception instanceof HttpError) {
+    return { status: exception.statusCode, body: failure(exception.name, exception.message) }
   }
 
+  // Errors raised by the framework itself (unknown route, rejected payload, ...).
   if (exception instanceof HttpException) {
     const status = exception.getStatus()
     const { message, isList } = messageOf(exception)
@@ -34,8 +31,7 @@ export function toErrorEnvelope(exception: unknown): { status: number; body: Err
     return { status, body: failure(code, message) }
   }
 
-  return {
-    status: HttpStatus.INTERNAL_SERVER_ERROR,
-    body: failure('INTERNAL_ERROR', INTERNAL_MESSAGE),
-  }
+  // Anything else is a bug: never leak its details.
+  const internal = new InternalServerError()
+  return { status: internal.statusCode, body: failure(internal.name, internal.message) }
 }

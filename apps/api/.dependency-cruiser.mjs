@@ -31,6 +31,22 @@ export default {
       },
     },
     {
+      name: 'http-errors-presentation-only',
+      severity: 'error',
+      comment:
+        'HTTP errors are a presentation concern. domain/application/infrastructure raise BusinessError subclasses; the controller converts them to HttpError.',
+      from: { path: '^src/modules/[^/]+/(domain|application|infrastructure)/' },
+      to: { path: '^src/app/http/' },
+    },
+    {
+      name: 'modules-app-allowlist',
+      severity: 'error',
+      comment:
+        'Modules may only use app/base (base classes) and app/http (HTTP errors, presentation only). Other app/ code is wiring.',
+      from: { path: '^src/modules/' },
+      to: { path: '^src/app/', pathNot: '^src/app/(base|http)/' },
+    },
+    {
       name: 'shared-kernel-no-modules',
       severity: 'error',
       comment: 'shared-kernel must not import business modules.',

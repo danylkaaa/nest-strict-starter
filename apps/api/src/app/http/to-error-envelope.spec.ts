@@ -1,17 +1,15 @@
-import { BadRequestException, HttpStatus, NotFoundException } from '@nestjs/common'
+import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { describe, expect, it } from 'vitest'
 
-import { ApiException } from '@/app/http/api-exception.js'
+import { ConflictError } from '@/app/http/http-errors.js'
 import { toErrorEnvelope } from '@/app/http/to-error-envelope.js'
 
 describe('toErrorEnvelope', () => {
-  it('keeps the code and status of an ApiException', () => {
-    const result = toErrorEnvelope(
-      new ApiException(HttpStatus.CONFLICT, 'ORDER_PAID', 'Already paid'),
-    )
+  it('uses the status and name of an HttpError', () => {
+    const result = toErrorEnvelope(new ConflictError('This order is already paid.'))
     expect(result).toEqual({
       status: 409,
-      body: { ok: false, error: { code: 'ORDER_PAID', message: 'Already paid' } },
+      body: { ok: false, error: { code: 'CONFLICT', message: 'This order is already paid.' } },
     })
   })
 

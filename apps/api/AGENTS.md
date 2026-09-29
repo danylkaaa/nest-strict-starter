@@ -6,15 +6,18 @@ NestJS API using DDD-style modules. Read the whole file before writing code here
 
 Where each pattern lives in code. Copy the reference implementation instead of inventing a variant.
 
-| Pattern                            | Reference implementation                       | Section                  |
-| ---------------------------------- | ---------------------------------------------- | ------------------------ |
-| Module layout, layers              | `src/modules/greeting/`                        | Directory Layout         |
-| Boundary rules                     | `.dependency-cruiser.mjs`                      | Dependency Direction     |
-| Result-based errors                | `greeting/domain/greeting.ts`                  | Error Handling           |
-| Error tag → `ApiException` mapping | `greeting/presentation/greeting.controller.ts` | Error Handling           |
-| Response envelope                  | `src/app/http/`                                | Response Envelope        |
-| Envelope integration test          | `src/app.module.spec.ts`                       | Response Envelope        |
-| Lint exceptions for Nest           | `oxlint.config.ts`                             | Nest-Specific Lint Notes |
+| Pattern                                               | Reference implementation                                               | Section                  |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------ |
+| Module layout, layers                                 | `src/modules/greeting/`                                                | Directory Layout         |
+| Boundary rules                                        | `.dependency-cruiser.mjs`                                              | Dependency Direction     |
+| Business error classes                                | `greeting/domain/greeting.errors.ts`, `src/app/base/business-error.ts` | Error Handling           |
+| Result-returning domain logic                         | `greeting/domain/greeting.ts`                                          | Error Handling           |
+| HTTP error classes                                    | `src/app/http/http-errors.ts`                                          | Error Handling           |
+| Business error → HTTP error, `Result<Dto, HttpError>` | `greeting/presentation/greeting.controller.ts`                         | Error Handling           |
+| Response DTO                                          | `greeting/presentation/greeting-response.dto.ts`                       | Error Handling           |
+| Response envelope                                     | `src/app/http/`                                                        | Response Envelope        |
+| Envelope integration test                             | `src/app.module.spec.ts`                                               | Response Envelope        |
+| Lint exceptions for Nest                              | `oxlint.config.ts`                                                     | Nest-Specific Lint Notes |
 
 Rules marked **[enforced]** are checked by `pnpm --filter api deps` (dependency-cruiser, `apps/api/.dependency-cruiser.mjs`) or oxlint. Rules marked **[convention]** are not machine-checked; follow them anyway.
 
@@ -44,7 +47,8 @@ Create a layer folder only when the module needs it (see Progressive Layering). 
 - **[enforced]** `domain/` MUST NOT import npm packages (no `@nestjs/*`, ORMs, loggers, crypto libs). Exempt: test files and `neverthrow`
 - **[enforced]** `presentation/` MUST NOT import database packages (`@workspace/database`, `drizzle-orm`, `pg`, `postgres`); go through application services
 - **[enforced]** `application/services/` MUST NOT runtime-import `@workspace/database`; type-only imports are allowed
-- **[convention]** `modules/` MUST NOT import `app/` wiring (config, database, events); `app/base/` and shared decorators are allowed
+- **[enforced]** `modules/` MAY import only `app/base/` and `app/http/`; all other `app/` code is wiring (`modules-app-allowlist`)
+- **[enforced]** `domain/`, `application/`, `infrastructure/` MUST NOT import `app/http/`; HTTP errors belong to `presentation/` (`http-errors-presentation-only`)
 - **[convention]** Use the `@/` alias for cross-directory imports; `../` imports are banned by lint. Same-directory `./x.js` is fine
 - Imports of local files use the `.js` extension (NodeNext resolution)
 
@@ -55,21 +59,45 @@ Create a layer folder only when the module needs it (see Progressive Layering). 
 - Aggregates expose business methods (`pay()`, `cancel()`); no public setters
 - Wanting a library in the domain means the logic belongs in application or infrastructure
 
-## Error Handling (neverthrow)
+## Error Handling (neverthrow + error classes)
 
-Expected failures are values, not exceptions. Use `neverthrow` (`Result`, `ResultAsync`, `ok`, `err`, `safeTry`).
+Expected failures are values, not exceptions: `Result` / `ResultAsync` from `neverthrow`. **Every error is a class** extending one of two bases; never use strings, plain objects, or bare `Error` as `E`.
 
-- **Expected failures** (validation, not found, conflict, rule violations, external call failed) MUST be returned as `Result<T, E>` / `ResultAsync<T, E>` from domain methods, application services, and port methods
-- **`throw` is only for bugs and unrecoverable states** (broken invariant that "cannot happen", misconfiguration at startup). Never throw for a case a caller could reasonably handle
-- **Error type `E`** is a discriminated union of plain objects with a literal tag, defined next to the code that produces it: `type GreetingError = { type: 'NameEmpty' } | { type: 'NameTooLong'; max: number }`. MUST NOT use `string`, `Error` subclasses, or `unknown` as `E`
-- **Wrap third-party throws at the infrastructure boundary**: `ResultAsync.fromPromise(promise, toInfraError)` / `Result.fromThrowable(fn, toInfraError)` inside repositories and adapters, so nothing above infrastructure sees a rejected promise
-- **Chain, don't nest**: use `map` / `andThen` / `mapErr` / `match`; use `safeTry` with `yield*` when a flow has 3+ dependent steps. No `try/catch` for control flow in `domain/` or `application/`
-- **Map to HTTP only in `presentation/`**: a controller consumes the `Result` with `match` and throws an `ApiException` for the error branch. Keep the mapping in a `Record<E['type'], { status, code, message }>` so a new error tag fails typecheck until it is mapped. MUST NOT let a `Result` or domain error escape as a response body
-- MUST NOT use `_unsafeUnwrap()` / `_unsafeUnwrapErr()` anywhere; in tests assert with `expect(result).toEqual(ok(value))` / `err(error)`
-- MUST NOT ignore a returned `Result`; handle both branches (type-aware lint flags unused promises, so keep `ResultAsync` awaited or returned)
-- Port and event-handler signatures state their `E` explicitly; do not widen to `unknown`
+| Layer                                        | Error base class                                   | Defined in                     | Carries                         |
+| -------------------------------------------- | -------------------------------------------------- | ------------------------------ | ------------------------------- |
+| `domain/`, `application/`, `infrastructure/` | `BusinessError` (`src/app/base/business-error.ts`) | `<ctx>/domain/<ctx>.errors.ts` | user-friendly `message`         |
+| `presentation/`                              | `HttpError` (`src/app/http/http-errors.ts`)        | `src/app/http/http-errors.ts`  | `statusCode`, `name`, `message` |
 
-When stuck: unsure whether a failure is expected or a bug → ask "could a caller do something useful with it?" Yes → `err`. No → `throw`.
+**Business errors**
+
+- Extend `BusinessError`, declare a literal `override readonly name = 'XxxError'` (this makes unions of errors exhaustively matchable), and give the constructor a default user-friendly message: `constructor(message = 'Please enter a name.') { super(message) }`
+- Omit the constructor to fall back to the generic default (`DEFAULT_BUSINESS_ERROR_MESSAGE`)
+- Messages are read by end users: plain English, no internals, no stack details, no IDs they cannot act on
+- Export a union per context: `type GreetingError = GreetingNameEmptyError | ...`
+- Domain methods, application services, and port methods return `Result<T, XxxError>` / `ResultAsync<T, XxxError>` for expected failures
+
+**HTTP errors**
+
+- Ready-made classes: `BadRequestError` (400), `UnauthorizedError` (401), `ForbiddenError` (403), `NotFoundError` (404), `ConflictError` (409), `UnprocessableEntityError` (422), `InternalServerError` (500). Each has a `statusCode`, a `name` used as the envelope `code` (e.g. `NOT_FOUND`), and a default message
+- Add a new status class in `http-errors.ts` only when a status is needed and missing. Extend a status class and override `name` only when clients must distinguish two failures with the same status
+- Only `presentation/` creates HTTP errors (enforced)
+
+**Controllers**
+
+- Every controller handler returns `Result<Dto, HttpError>` (or `ResultAsync<Dto, HttpError>`). It never returns a bare value and never throws for an expected failure
+- The controller converts inner-layer errors to HTTP errors with `.mapErr(...)`, passing the business error's `message` through so users see the friendly text
+- Keep the conversion in a `Record<XxxError['name'], (message: string) => HttpError>` so a new business error fails typecheck until it is mapped
+- Reference: `modules/greeting/presentation/greeting.controller.ts`
+
+**Everywhere else**
+
+- **`throw` is only for bugs and unrecoverable states** (broken invariant that "cannot happen", misconfiguration at startup). Anything thrown that is not an `HttpError` is treated as a bug and returned as a generic 500; its details are logged, never sent
+- **Wrap third-party throws at the infrastructure boundary**: `ResultAsync.fromPromise(promise, (cause) => new SomeBusinessError(...))` / `Result.fromThrowable(fn, mapError)`, so nothing above infrastructure sees a rejected promise
+- **Chain, don't nest**: `map` / `andThen` / `mapErr` / `match`; `safeTry` with `yield*` for 3+ dependent steps. No `try/catch` for control flow in `domain/` or `application/`
+- MUST NOT use `_unsafeUnwrap()` / `_unsafeUnwrapErr()` anywhere; in tests assert with `expect(result).toEqual(ok(value))` / `err(new XxxError())`
+- MUST NOT ignore a returned `Result`; handle both branches
+
+When stuck: unsure whether a failure is expected or a bug → ask "could a caller do something useful with it?" Yes → return an error class in a `Result`. No → `throw`.
 
 ## Response Envelope
 
@@ -77,14 +105,14 @@ Every HTTP response uses one of two shapes; clients switch on `ok`:
 
 ```json
 { "ok": true, "data": { "message": "Hello, Ada!" } }
-{ "ok": false, "error": { "code": "GREETING_NAME_EMPTY", "message": "Name must not be empty" } }
+{ "ok": false, "error": { "code": "BAD_REQUEST", "message": "Please enter a name." } }
 ```
 
-- Implemented once, globally, in `src/app/http/`: `EnvelopeInterceptor` wraps results, `EnvelopeFilter` wraps every thrown value; both are registered in `AppModule` via `APP_INTERCEPTOR` / `APP_FILTER`. Do not re-register them per module
-- Controllers return the **bare payload** (a DTO or plain object) and never build `{ ok, data }` themselves. A handler that returns nothing yields `data: null`
-- Failures are thrown as `ApiException(status, code, message)` from `presentation/` only (see Error Handling). Never throw a raw `HttpException` for an expected failure; `code` is the client contract
-- `code` is `UPPER_SNAKE_CASE`, prefixed by the context for domain errors (`GREETING_NAME_EMPTY`); codes are stable once released, `message` is human-readable and may change
-- Framework errors are mapped automatically: unknown route → `NOT_FOUND`, validation message list → `VALIDATION_FAILED` (400), any other `HttpException` → its status name, anything else → `INTERNAL_ERROR` (500) with a generic message. Internal details are logged, never returned
+- Implemented once, globally, in `src/app/http/` and registered in `AppModule` via `APP_INTERCEPTOR` / `APP_FILTER`. Do not re-register per module
+- `EnvelopeInterceptor` unwraps the controller's `Result`: `Ok` → `{ ok: true, data }` (empty value → `data: null`); `Err` → the `HttpError` is thrown into the pipeline
+- `EnvelopeFilter` renders every thrown value: `HttpError` → its `statusCode`, `name` as `code`, and `message`. Controllers never build `{ ok, data }` themselves
+- Framework errors are mapped automatically: unknown route → `NOT_FOUND`, validation message list → `VALIDATION_FAILED` (400), any other Nest `HttpException` → its status name, anything else → `INTERNAL_ERROR` (500) with a generic message
+- `code` values are stable once released; `message` is human-readable and may change
 - `StreamableFile` responses (downloads) skip the envelope. Handlers using `@Res()` bypass it; avoid `@Res()`
 - Change envelope behavior only in `app/http/` and cover it with a test in `app.module.spec.ts`
 
@@ -103,7 +131,7 @@ Need a return value (sync) → **port**; trigger a side effect (async) → **dom
 
 - Database, cache, HTTP clients, queues, and file system are accessed via ports declared in `application/ports/` and implemented in `infrastructure/`
 - Services MUST NOT inject concrete clients; they depend on ports
-- Controllers return DTOs with explicit conversion (`XResponseDto.fromDomain()`); never leak aggregates
+- Controllers return DTOs inside a `Result` (see Error Handling); never leak aggregates
 
 ## shared-kernel Admission
 

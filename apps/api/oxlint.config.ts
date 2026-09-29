@@ -16,6 +16,11 @@ export default defineConfig({
   },
   overrides: [
     {
+      // Error catalogs and their specs declare several small classes per file.
+      files: ['**/*errors.ts', '**/*errors.spec.ts', '**/*error.spec.ts'],
+      rules: { 'max-classes-per-file': 'off' },
+    },
+    {
       files: ['**/*.ts'],
       rules: {
         // Empty decorated classes are valid (modules, controllers)
