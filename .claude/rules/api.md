@@ -12,7 +12,7 @@ Rules marked **[enforced]** are checked by `pnpm --filter api deps` (dependency-
 ```
 apps/api/src/
 ├── main.ts / app.module.ts
-├── app/              # Framework wiring: config, filters, interceptors, logger, base classes
+├── app/              # Framework wiring: http/ (response envelope), config, logger, base classes
 ├── modules/<ctx>/    # Business contexts (one folder per bounded context)
 │   ├── <ctx>.module.ts
 │   ├── domain/           # Pure business logic; aggregates, value objects, events/
@@ -53,12 +53,29 @@ Expected failures are values, not exceptions. Use `neverthrow` (`Result`, `Resul
 - **Error type `E`** is a discriminated union of plain objects with a literal tag, defined next to the code that produces it: `type GreetingError = { type: 'NameEmpty' } | { type: 'NameTooLong'; max: number }`. MUST NOT use `string`, `Error` subclasses, or `unknown` as `E`
 - **Wrap third-party throws at the infrastructure boundary**: `ResultAsync.fromPromise(promise, toInfraError)` / `Result.fromThrowable(fn, toInfraError)` inside repositories and adapters, so nothing above infrastructure sees a rejected promise
 - **Chain, don't nest**: use `map` / `andThen` / `mapErr` / `match`; use `safeTry` with `yield*` when a flow has 3+ dependent steps. No `try/catch` for control flow in `domain/` or `application/`
-- **Map to HTTP only in `presentation/`**: a controller consumes the `Result` with `match` (or `isErr()`) and translates each error tag to an `HttpException` (exhaustively, with a `never` check in the default branch). MUST NOT let a `Result` or domain error escape as a response body
-- MUST NOT use `_unsafeUnwrap()` / `_unsafeUnwrapErr()` outside `*.spec.ts`
+- **Map to HTTP only in `presentation/`**: a controller consumes the `Result` with `match` and throws an `ApiException` for the error branch. Keep the mapping in a `Record<E['type'], { status, code, message }>` so a new error tag fails typecheck until it is mapped. MUST NOT let a `Result` or domain error escape as a response body
+- MUST NOT use `_unsafeUnwrap()` / `_unsafeUnwrapErr()` anywhere; in tests assert with `expect(result).toEqual(ok(value))` / `err(error)`
 - MUST NOT ignore a returned `Result`; handle both branches (type-aware lint flags unused promises, so keep `ResultAsync` awaited or returned)
 - Port and event-handler signatures state their `E` explicitly; do not widen to `unknown`
 
 When stuck: unsure whether a failure is expected or a bug → ask "could a caller do something useful with it?" Yes → `err`. No → `throw`.
+
+## Response Envelope
+
+Every HTTP response uses one of two shapes; clients switch on `ok`:
+
+```json
+{ "ok": true, "data": { "message": "Hello, Ada!" } }
+{ "ok": false, "error": { "code": "GREETING_NAME_EMPTY", "message": "Name must not be empty" } }
+```
+
+- Implemented once, globally, in `src/app/http/`: `EnvelopeInterceptor` wraps results, `EnvelopeFilter` wraps every thrown value; both are registered in `AppModule` via `APP_INTERCEPTOR` / `APP_FILTER`. Do not re-register them per module
+- Controllers return the **bare payload** (a DTO or plain object) and never build `{ ok, data }` themselves. A handler that returns nothing yields `data: null`
+- Failures are thrown as `ApiException(status, code, message)` from `presentation/` only (see Error Handling). Never throw a raw `HttpException` for an expected failure; `code` is the client contract
+- `code` is `UPPER_SNAKE_CASE`, prefixed by the context for domain errors (`GREETING_NAME_EMPTY`); codes are stable once released, `message` is human-readable and may change
+- Framework errors are mapped automatically: unknown route → `NOT_FOUND`, validation message list → `VALIDATION_FAILED` (400), any other `HttpException` → its status name, anything else → `INTERNAL_ERROR` (500) with a generic message. Internal details are logged, never returned
+- `StreamableFile` responses (downloads) skip the envelope. Handlers using `@Res()` bypass it; avoid `@Res()`
+- Change envelope behavior only in `app/http/` and cover it with a test in `app.module.spec.ts`
 
 ## Cross-Context Communication
 
