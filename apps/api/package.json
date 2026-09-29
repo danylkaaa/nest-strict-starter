@@ -1,0 +1,39 @@
+{
+  "name": "api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "deps": "depcruise src --config .dependency-cruiser.mjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.1.1",
+    "@nestjs/core": "^12.1.1",
+    "@nestjs/platform-express": "^12.1.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^12.0.8",
+    "@nestjs/schematics": "^12.0.6",
+    "@nestjs/testing": "^12.1.1",
+    "@swc/cli": "^0.8.1",
+    "@swc/core": "^1.16.12",
+    "@types/node": "^26.6.3",
+    "dependency-cruiser": "^18.4.0",
+    "typescript": "^6.0.3",
+    "unplugin-swc": "^2.0.0",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^5.0.2"
+  }
+}
