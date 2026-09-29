@@ -39,6 +39,7 @@ Single package: `pnpm --filter api <script>`.
 - MVP-first: build only what the current requirement needs; no speculative layers or config switches
 - Test-first: write the failing test, then the implementation; tests sit next to source (`foo.ts` + `foo.spec.ts`)
 - Functional-first: prefer pure functions and immutable data; keep side effects in infrastructure
+- Errors as values: expected failures are `neverthrow` `Result`s, not exceptions (see `.claude/rules/api.md`)
 - Organize by business capability (`modules/<context>/`), not by technical layer
 
 ## Quality Gates

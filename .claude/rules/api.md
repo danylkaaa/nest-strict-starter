@@ -30,7 +30,7 @@ Create a layer folder only when the module needs it (see Progressive Layering). 
 - **[enforced]** `app/` MUST NOT import `modules/`
 - **[enforced]** `shared-kernel/` MUST NOT import `modules/`
 - **[enforced]** A module MUST NOT import another module, except its `domain/events/` and `application/ports/`
-- **[enforced]** `domain/` MUST NOT import npm packages (no `@nestjs/*`, ORMs, loggers, crypto libs). Test files are exempt
+- **[enforced]** `domain/` MUST NOT import npm packages (no `@nestjs/*`, ORMs, loggers, crypto libs). Exempt: test files and `neverthrow`
 - **[enforced]** `presentation/` MUST NOT import database packages (`@workspace/database`, `drizzle-orm`, `pg`, `postgres`); go through application services
 - **[enforced]** `application/services/` MUST NOT runtime-import `@workspace/database`; type-only imports are allowed
 - **[convention]** `modules/` MUST NOT import `app/` wiring (config, database, events); `app/base/` and shared decorators are allowed
@@ -43,6 +43,22 @@ Create a layer folder only when the module needs it (see Progressive Layering). 
 - Domain tests use vitest and domain classes only; never `Test.createTestingModule`
 - Aggregates expose business methods (`pay()`, `cancel()`); no public setters
 - Wanting a library in the domain means the logic belongs in application or infrastructure
+
+## Error Handling (neverthrow)
+
+Expected failures are values, not exceptions. Use `neverthrow` (`Result`, `ResultAsync`, `ok`, `err`, `safeTry`).
+
+- **Expected failures** (validation, not found, conflict, rule violations, external call failed) MUST be returned as `Result<T, E>` / `ResultAsync<T, E>` from domain methods, application services, and port methods
+- **`throw` is only for bugs and unrecoverable states** (broken invariant that "cannot happen", misconfiguration at startup). Never throw for a case a caller could reasonably handle
+- **Error type `E`** is a discriminated union of plain objects with a literal tag, defined next to the code that produces it: `type GreetingError = { type: 'NameEmpty' } | { type: 'NameTooLong'; max: number }`. MUST NOT use `string`, `Error` subclasses, or `unknown` as `E`
+- **Wrap third-party throws at the infrastructure boundary**: `ResultAsync.fromPromise(promise, toInfraError)` / `Result.fromThrowable(fn, toInfraError)` inside repositories and adapters, so nothing above infrastructure sees a rejected promise
+- **Chain, don't nest**: use `map` / `andThen` / `mapErr` / `match`; use `safeTry` with `yield*` when a flow has 3+ dependent steps. No `try/catch` for control flow in `domain/` or `application/`
+- **Map to HTTP only in `presentation/`**: a controller consumes the `Result` with `match` (or `isErr()`) and translates each error tag to an `HttpException` (exhaustively, with a `never` check in the default branch). MUST NOT let a `Result` or domain error escape as a response body
+- MUST NOT use `_unsafeUnwrap()` / `_unsafeUnwrapErr()` outside `*.spec.ts`
+- MUST NOT ignore a returned `Result`; handle both branches (type-aware lint flags unused promises, so keep `ResultAsync` awaited or returned)
+- Port and event-handler signatures state their `E` explicitly; do not widen to `unknown`
+
+When stuck: unsure whether a failure is expected or a bug → ask "could a caller do something useful with it?" Yes → `err`. No → `throw`.
 
 ## Cross-Context Communication
 
@@ -69,12 +85,12 @@ Admit only cross-context contracts (ports, event classes, global enums, generic 
 
 Start a new module as thin as possible and add a layer only on a signal:
 
-| Stage | Structure | Signal to advance |
-|---|---|---|
-| 1 | presentation + infrastructure | Cross-request state needed |
-| 2 | + application/ports | A read → judge → write flow appears |
-| 3 | + application/services | Invariants or domain events appear |
-| 4 | + domain/aggregates + events | — |
+| Stage | Structure                     | Signal to advance                   |
+| ----- | ----------------------------- | ----------------------------------- |
+| 1     | presentation + infrastructure | Cross-request state needed          |
+| 2     | + application/ports           | A read → judge → write flow appears |
+| 3     | + application/services        | Invariants or domain events appear  |
+| 4     | + domain/aggregates + events  | —                                   |
 
 Skip at most one stage at a time; never downgrade. Unsure → ask. The `greeting` module is a stage-3 sample; delete or replace it when real modules exist.
 
