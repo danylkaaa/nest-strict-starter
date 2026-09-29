@@ -26,6 +26,26 @@ export default defineConfig({
       },
     },
     {
+      // HTTP exceptions are a presentation concern; dependency-cruiser cannot see @nestjs/common
+      // imports, so this covers what `http-errors-presentation-only` cannot.
+      files: ['src/modules/*/{domain,application,infrastructure}/**/*.ts'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['@nestjs/common'],
+                importNamePattern: 'Exception$',
+                message:
+                  'HTTP exceptions belong to presentation/. Return a DomainError in a Result instead.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
       // vitest mocks reference methods unbound by design
       files: ['**/*.{test,spec}.ts'],
       rules: { 'typescript/unbound-method': 'off' },

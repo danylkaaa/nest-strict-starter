@@ -3,11 +3,21 @@ import { ZodValidationException } from 'nestjs-zod';
 import { ZodError } from 'zod';
 
 import { failure } from '@/app/http/envelope/envelope.js';
-import { HttpError, InternalServerError } from '@/app/http/errors/http-errors.js';
 
 import type { ErrorEnvelope } from '@/app/http/envelope/envelope.js';
 
 const BAD_REQUEST = 400;
+const INTERNAL_SERVER_ERROR = 500;
+const INTERNAL_ERROR_CODE = 'INTERNAL_ERROR';
+const INTERNAL_ERROR_MESSAGE = 'Internal server error';
+
+/** A business code carried by a `{ code, message }` object response, if any. */
+function codeOf(exception: HttpException): string | undefined {
+  const response = exception.getResponse();
+  if (typeof response !== 'object') return undefined;
+  const code = (response as { code?: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
+}
 
 function messageOf(exception: HttpException): { message: string; isList: boolean } {
   const response = exception.getResponse();
@@ -19,10 +29,6 @@ function messageOf(exception: HttpException): { message: string; isList: boolean
 
 /** Pure mapping from any thrown value to an HTTP status and the error envelope body. */
 export function toErrorEnvelope(exception: unknown): { status: number; body: ErrorEnvelope } {
-  if (exception instanceof HttpError) {
-    return { body: failure(exception.name, exception.message), status: exception.statusCode };
-  }
-
   // A request DTO (body, query, params) failed its zod schema.
   if (exception instanceof ZodValidationException) {
     const zodError = exception.getZodError();
@@ -35,17 +41,22 @@ export function toErrorEnvelope(exception: unknown): { status: number; body: Err
     return { body: failure('VALIDATION_FAILED', message), status: BAD_REQUEST };
   }
 
-  // Errors raised by the framework itself (unknown route, rejected payload, ...).
+  // Nest exceptions: thrown by controllers/guards (with an optional business `code`) or by the framework.
   if (exception instanceof HttpException) {
     const status = exception.getStatus();
     const { message, isList } = messageOf(exception);
     // A message list is what ValidationPipe produces for a rejected payload.
     const code =
-      isList && status === BAD_REQUEST ? 'VALIDATION_FAILED' : (HttpStatus[status] ?? 'HTTP_ERROR');
+      codeOf(exception) ??
+      (isList && status === BAD_REQUEST
+        ? 'VALIDATION_FAILED'
+        : (HttpStatus[status] ?? 'HTTP_ERROR'));
     return { body: failure(code, message), status };
   }
 
   // Anything else is a bug: never leak its details.
-  const internal = new InternalServerError();
-  return { body: failure(internal.name, internal.message), status: internal.statusCode };
+  return {
+    body: failure(INTERNAL_ERROR_CODE, INTERNAL_ERROR_MESSAGE),
+    status: INTERNAL_SERVER_ERROR,
+  };
 }

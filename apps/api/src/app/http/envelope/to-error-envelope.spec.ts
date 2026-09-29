@@ -1,16 +1,31 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ZodValidationException } from 'nestjs-zod';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { toErrorEnvelope } from '@/app/http/envelope/to-error-envelope.js';
-import { ConflictError } from '@/app/http/errors/http-errors.js';
 
 describe('toErrorEnvelope', () => {
-  it('uses the status and name of an HttpError', () => {
-    const result = toErrorEnvelope(new ConflictError('This order is already paid.'));
+  it('uses the code of an object response and its own status', () => {
+    const result = toErrorEnvelope(
+      new ConflictException({
+        code: 'OrderAlreadyPaidError',
+        message: 'This order is already paid.',
+      }),
+    );
     expect(result).toEqual({
-      body: { error: { code: 'CONFLICT', message: 'This order is already paid.' }, ok: false },
+      body: {
+        error: { code: 'OrderAlreadyPaidError', message: 'This order is already paid.' },
+        ok: false,
+      },
+      status: 409,
+    });
+  });
+
+  it('ignores a non-string code in an object response', () => {
+    const result = toErrorEnvelope(new ConflictException({ code: 42, message: 'Conflict here.' }));
+    expect(result).toEqual({
+      body: { error: { code: 'CONFLICT', message: 'Conflict here.' }, ok: false },
       status: 409,
     });
   });

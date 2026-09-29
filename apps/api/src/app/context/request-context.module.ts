@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { ClsModule } from 'nestjs-cls';
+
+import { RequestContext } from '@/app/http/context/request-context.js';
 
 export const REQUEST_ID_HEADER = 'X-Request-Id';
 
@@ -9,9 +11,12 @@ export const REQUEST_ID_HEADER = 'X-Request-Id';
  * Opens an async context (nestjs-cls) for every HTTP request and gives it a unique id.
  * The id is always generated server-side (a client-supplied id is never trusted) and returned in
  * the `X-Request-Id` response header. `ClsService` is global; read the id with `cls.getId()`.
+ * Also provides and exports `RequestContext` globally, so the guard and any controller can inject it.
  * Import once, in `AppModule`, before `AppLoggerModule`.
  */
+@Global()
 @Module({
+  exports: [RequestContext],
   imports: [
     ClsModule.forRoot({
       global: true,
@@ -25,5 +30,6 @@ export const REQUEST_ID_HEADER = 'X-Request-Id';
       },
     }),
   ],
+  providers: [RequestContext],
 })
 export class RequestContextModule {}

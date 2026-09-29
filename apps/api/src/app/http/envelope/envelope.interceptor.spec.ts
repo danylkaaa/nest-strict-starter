@@ -1,11 +1,10 @@
 import { createMock } from '@golevelup/ts-vitest';
-import { StreamableFile } from '@nestjs/common';
+import { NotFoundException, StreamableFile } from '@nestjs/common';
 import { err, ok } from 'neverthrow';
 import { lastValueFrom, of } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 
 import { EnvelopeInterceptor } from '@/app/http/envelope/envelope.interceptor.js';
-import { NotFoundError } from '@/app/http/errors/http-errors.js';
 
 import type { CallHandler, ExecutionContext } from '@nestjs/common';
 
@@ -27,7 +26,7 @@ describe('envelope interceptor', () => {
   });
 
   it('throws the error of an Err result', async () => {
-    const error = new NotFoundError();
+    const error = new NotFoundException();
     await expect(run(err(error))).rejects.toBe(error);
   });
 

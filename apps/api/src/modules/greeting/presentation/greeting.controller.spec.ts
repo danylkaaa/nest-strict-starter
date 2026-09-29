@@ -2,7 +2,6 @@ import { createMock } from '@golevelup/ts-vitest';
 import { err, ok } from 'neverthrow';
 import { describe, expect, it } from 'vitest';
 
-import { BadRequestError } from '@/app/http/errors/http-errors.js';
 import { GreetingService } from '@/modules/greeting/application/services/greeting.service.js';
 import { GreetingNameEmptyError } from '@/modules/greeting/domain/greeting.errors.js';
 import { GreetingController } from '@/modules/greeting/presentation/greeting.controller.js';
@@ -27,16 +26,14 @@ describe('greeting controller', () => {
     expect(service.greet).toHaveBeenCalledWith('Ada');
   });
 
-  it('maps a business error to a 400 with its name and friendly message', () => {
+  it('maps a domain error to a 400 with its name and friendly message', () => {
     const controller = controllerWith(err(new GreetingNameEmptyError()));
 
     const result = controller.greet({ name: ' ' });
 
-    expect(result).toEqual(
-      err(new BadRequestError('Please enter a name.', 'GreetingNameEmptyError')),
+    expect(result.mapErr((error) => error.getStatus())).toEqual(err(400));
+    expect(result.mapErr((error) => error.getResponse())).toEqual(
+      err({ code: 'GreetingNameEmptyError', message: 'Please enter a name.' }),
     );
-    expect(result).toMatchObject({
-      error: { name: 'GreetingNameEmptyError', statusCode: 400 },
-    });
   });
 });

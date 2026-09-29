@@ -1,6 +1,6 @@
-import { BusinessError } from '@/app/base/business-error.js';
+import { DomainError } from '@/app/base/domain-error.js';
 
-export class GreetingNameEmptyError extends BusinessError {
+export class GreetingNameEmptyError extends DomainError {
   override readonly name = 'GreetingNameEmptyError';
   constructor(message = 'Please enter a name.') {
     super(message);

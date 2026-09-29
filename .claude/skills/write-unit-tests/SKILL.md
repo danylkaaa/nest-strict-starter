@@ -16,15 +16,15 @@ Stack: **vitest** (explicit imports, no globals), `@golevelup/ts-vitest` for moc
 
 ## What to test, per layer
 
-| Layer                                                 | Test                                                                                                                               | Mock                        | Reference                                                        |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------- |
-| `domain/`                                             | Every business rule and error path, edge values, state transitions. Pure functions and aggregates                                  | nothing                     | `modules/greeting/domain/greeting.spec.ts`                       |
-| `application/services/`                               | Orchestration: calls ports with the right arguments, returns the right `Result`, passes errors up                                  | ports and logger            | `modules/greeting/application/services/greeting.service.spec.ts` |
-| `presentation/` controllers                           | Query/body → service call, service `Result` → response DTO, **every** business error → the right `HttpError` (status + message)    | the service                 | `modules/greeting/presentation/greeting.controller.spec.ts`      |
-| zod DTO schemas                                       | Defaults, coercion, valid input, each invalid input rejected                                                                       | nothing                     | `app/config/app-config.spec.ts`                                  |
-| `infrastructure/` adapters                            | External failure → `BusinessError` in a `Result`; mapping of external data to domain types                                         | the client (db, http)       | write it like the service spec                                   |
-| `app/` wiring (filters, interceptors, config, logger) | The pure mapping functions in isolation                                                                                            | framework objects           | `app/http/envelope/*.spec.ts`, `app/logger/*.spec.ts`            |
-| HTTP integration                                      | Cross-cutting behavior through the real pipeline: envelope, validation, request id. One happy path and one error path per endpoint | nothing (boots `AppModule`) | `app.module.spec.ts`                                             |
+| Layer                                                 | Test                                                                                                                                         | Mock                        | Reference                                                        |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------- |
+| `domain/`                                             | Every business rule and error path, edge values, state transitions. Pure functions and aggregates                                            | nothing                     | `modules/greeting/domain/greeting.spec.ts`                       |
+| `application/services/`                               | Orchestration: calls ports with the right arguments, returns the right `Result`, passes errors up                                            | ports and logger            | `modules/greeting/application/services/greeting.service.spec.ts` |
+| `presentation/` controllers                           | Query/body → service call, service `Result` → response DTO, **every** domain error → the right Nest exception (status + `{ code, message }`) | the service                 | `modules/greeting/presentation/greeting.controller.spec.ts`      |
+| zod DTO schemas                                       | Defaults, coercion, valid input, each invalid input rejected                                                                                 | nothing                     | `app/config/app-config.spec.ts`                                  |
+| `infrastructure/` adapters                            | External failure → `DomainError` in a `Result`; mapping of external data to domain types                                                     | the client (db, http)       | write it like the service spec                                   |
+| `app/` wiring (filters, interceptors, config, logger) | The pure mapping functions in isolation                                                                                                      | framework objects           | `app/http/envelope/*.spec.ts`, `app/logger/*.spec.ts`            |
+| HTTP integration                                      | Cross-cutting behavior through the real pipeline: envelope, validation, request id. One happy path and one error path per endpoint           | nothing (boots `AppModule`) | `app.module.spec.ts`                                             |
 
 Unit tests never start a server or touch a database. A real database or network needs an integration/e2e test, not a unit test.
 
@@ -42,22 +42,22 @@ Unit tests never start a server or touch a database. A real database or network 
 ```ts
 describe('greeting service', () => {
   // lowercase unit name
-  let service: GreetingService // fresh instance per test
+  let service: GreetingService; // fresh instance per test
   beforeEach(() => {
-    service = new GreetingService(createMock<PinoLogger>())
-  })
+    service = new GreetingService(createMock<PinoLogger>());
+  });
 
   it('returns the domain error for a blank name', () => {
     // behavior + condition
-    const result = service.greet(' ') // act
+    const result = service.greet(' '); // act
 
-    expect(result).toEqual(err(new GreetingNameEmptyError())) // assert
-  })
-})
+    expect(result).toEqual(err(new GreetingNameEmptyError())); // assert
+  });
+});
 ```
 
 - One `describe` per unit, named in lowercase (`greeting service`, `buildGreeting`, `get /health`)
-- One behavior per `it`; the title says what happens and when: `'maps a business error to a 400 with the friendly message'`. No "should", no method names alone
+- One behavior per `it`; the title says what happens and when: `'maps a domain error to a 400 with the friendly message'`. No "should", no method names alone
 - **Arrange, act, assert**, separated by blank lines. Keep arrange short; move repeated setup into `beforeEach` or a small factory at the top of the file
 - Fresh objects per test (`beforeEach`); no shared mutable state, no dependence on test order
 - Many inputs, one behavior: `it.each([...])('rejects invalid input %o', ...)`
@@ -67,9 +67,9 @@ describe('greeting service', () => {
 ## Assertions on `Result`s
 
 ```ts
-expect(buildGreeting('Ada')).toEqual(ok('Hello, Ada!'))
-expect(buildGreeting('  ')).toEqual(err(new GreetingNameEmptyError()))
-expect(result).toMatchObject({ error: { statusCode: 400 } }) // extra field on the error
+expect(buildGreeting('Ada')).toEqual(ok('Hello, Ada!'));
+expect(buildGreeting('  ')).toEqual(err(new GreetingNameEmptyError()));
+expect(result).toMatchObject({ error: { statusCode: 400 } }); // extra field on the error
 ```
 
 `_unsafeUnwrap()` and `_unsafeUnwrapErr()` are banned. Never branch on `result.isOk()` inside a test.

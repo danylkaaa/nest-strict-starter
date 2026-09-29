@@ -31,7 +31,7 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
       reportsDirectory: './coverage',
     },
-    env: { LOG_LEVEL: 'silent' },
+    env: { JWT_SECRET: 'test-secret-that-is-at-least-32-chars', LOG_LEVEL: 'silent' },
     environment: 'node',
     globals: false,
     include: ['src/**/*.spec.ts'],

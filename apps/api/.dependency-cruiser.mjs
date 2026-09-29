@@ -32,7 +32,7 @@ export default {
     },
     {
       comment:
-        'HTTP errors are a presentation concern. domain/application/infrastructure raise BusinessError subclasses; the controller converts them to HttpError.',
+        'HTTP concerns are a presentation concern. domain/application/infrastructure raise DomainError subclasses; the controller converts them to Nest HttpException subclasses (from @nestjs/common). This rule forbids src/app/http/ imports; it cannot see @nestjs/common exceptions, which oxlint no-restricted-imports covers.',
       from: { path: '^src/modules/[^/]+/(domain|application|infrastructure)/' },
       name: 'http-errors-presentation-only',
       severity: 'error',
@@ -40,11 +40,27 @@ export default {
     },
     {
       comment:
-        'Modules may only use app/base (base classes) and app/http/errors (HTTP errors, presentation only). Other app/ code, including app/http/envelope, is wiring.',
+        'Modules may only use app/base (base classes) and app/http/auth (auth decorators) and app/http/context (RequestContext); the http ones are presentation only. Other app/ code, including app/http/envelope, is wiring.',
       from: { path: '^src/modules/' },
       name: 'modules-app-allowlist',
       severity: 'error',
-      to: { path: '^src/app/', pathNot: '^src/app/(base|http/errors)/' },
+      to: { path: '^src/app/', pathNot: '^src/app/(base|http/auth|http/context)/' },
+    },
+    {
+      comment:
+        'Modules must not use @nestjs/jwt. Tokens are issued through the TOKEN_ISSUER port (shared-kernel/auth), implemented in app/auth.',
+      from: { path: '^src/modules/' },
+      name: 'modules-no-jwt',
+      severity: 'error',
+      to: { path: '/node_modules/@nestjs/jwt/' },
+    },
+    {
+      comment:
+        'Modules must not use nestjs-cls. Request-scoped data (the current user) is read only through app/http/context/RequestContext, in controllers.',
+      from: { path: '^src/modules/' },
+      name: 'modules-no-cls',
+      severity: 'error',
+      to: { path: '/node_modules/nestjs-cls/' },
     },
     {
       comment:
