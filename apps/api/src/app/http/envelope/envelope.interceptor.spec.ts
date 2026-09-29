@@ -4,8 +4,8 @@ import { err, ok } from 'neverthrow'
 import { lastValueFrom, of } from 'rxjs'
 import { describe, expect, it } from 'vitest'
 
-import { EnvelopeInterceptor } from '@/app/http/envelope.interceptor.js'
-import { NotFoundError } from '@/app/http/http-errors.js'
+import { EnvelopeInterceptor } from '@/app/http/envelope/envelope.interceptor.js'
+import { NotFoundError } from '@/app/http/errors/http-errors.js'
 
 import type { CallHandler, ExecutionContext } from '@nestjs/common'
 

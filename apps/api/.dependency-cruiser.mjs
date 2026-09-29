@@ -42,9 +42,9 @@ export default {
       name: 'modules-app-allowlist',
       severity: 'error',
       comment:
-        'Modules may only use app/base (base classes) and app/http (HTTP errors, presentation only). Other app/ code is wiring.',
+        'Modules may only use app/base (base classes) and app/http/errors (HTTP errors, presentation only). Other app/ code, including app/http/envelope, is wiring.',
       from: { path: '^src/modules/' },
-      to: { path: '^src/app/', pathNot: '^src/app/(base|http)/' },
+      to: { path: '^src/app/', pathNot: '^src/app/(base|http/errors)/' },
     },
     {
       name: 'shared-kernel-no-modules',

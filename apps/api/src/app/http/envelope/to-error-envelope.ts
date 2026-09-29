@@ -1,9 +1,9 @@
 import { HttpException, HttpStatus } from '@nestjs/common'
 
-import { failure } from '@/app/http/envelope.js'
-import { HttpError, InternalServerError } from '@/app/http/http-errors.js'
+import { failure } from '@/app/http/envelope/envelope.js'
+import { HttpError, InternalServerError } from '@/app/http/errors/http-errors.js'
 
-import type { ErrorEnvelope } from '@/app/http/envelope.js'
+import type { ErrorEnvelope } from '@/app/http/envelope/envelope.js'
 
 const BAD_REQUEST = 400
 

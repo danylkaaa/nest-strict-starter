@@ -1,8 +1,8 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { describe, expect, it } from 'vitest'
 
-import { ConflictError } from '@/app/http/http-errors.js'
-import { toErrorEnvelope } from '@/app/http/to-error-envelope.js'
+import { toErrorEnvelope } from '@/app/http/envelope/to-error-envelope.js'
+import { ConflictError } from '@/app/http/errors/http-errors.js'
 
 describe('toErrorEnvelope', () => {
   it('uses the status and name of an HttpError', () => {

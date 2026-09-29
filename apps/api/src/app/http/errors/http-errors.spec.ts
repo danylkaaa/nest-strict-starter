@@ -9,7 +9,7 @@ import {
   NotFoundError,
   UnauthorizedError,
   UnprocessableEntityError,
-} from '@/app/http/http-errors.js'
+} from '@/app/http/errors/http-errors.js'
 
 describe('http errors', () => {
   it.each([

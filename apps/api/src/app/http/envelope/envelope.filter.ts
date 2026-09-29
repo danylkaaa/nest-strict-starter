@@ -1,7 +1,7 @@
 import { Catch, Logger } from '@nestjs/common'
 import { HttpAdapterHost } from '@nestjs/core'
 
-import { toErrorEnvelope } from '@/app/http/to-error-envelope.js'
+import { toErrorEnvelope } from '@/app/http/envelope/to-error-envelope.js'
 
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common'
 

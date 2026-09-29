@@ -1,10 +1,10 @@
 import { Controller, Get, Query } from '@nestjs/common'
 
-import { BadRequestError } from '@/app/http/http-errors.js'
+import { BadRequestError } from '@/app/http/errors/http-errors.js'
 import { GreetingService } from '@/modules/greeting/application/services/greeting.service.js'
 import { GreetingResponseDto } from '@/modules/greeting/presentation/greeting-response.dto.js'
 
-import type { HttpError } from '@/app/http/http-errors.js'
+import type { HttpError } from '@/app/http/errors/http-errors.js'
 import type { GreetingError } from '@/modules/greeting/domain/greeting.errors.js'
 import type { Result } from 'neverthrow'
 

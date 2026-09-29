@@ -12,10 +12,10 @@ Where each pattern lives in code. Copy the reference implementation instead of i
 | Boundary rules                                        | `.dependency-cruiser.mjs`                                              | Dependency Direction     |
 | Business error classes                                | `greeting/domain/greeting.errors.ts`, `src/app/base/business-error.ts` | Error Handling           |
 | Result-returning domain logic                         | `greeting/domain/greeting.ts`                                          | Error Handling           |
-| HTTP error classes                                    | `src/app/http/http-errors.ts`                                          | Error Handling           |
+| HTTP error classes                                    | `src/app/http/errors/http-errors.ts`                                   | Error Handling           |
 | Business error → HTTP error, `Result<Dto, HttpError>` | `greeting/presentation/greeting.controller.ts`                         | Error Handling           |
 | Response DTO                                          | `greeting/presentation/greeting-response.dto.ts`                       | Error Handling           |
-| Response envelope                                     | `src/app/http/`                                                        | Response Envelope        |
+| Response envelope                                     | `src/app/http/envelope/`                                               | Response Envelope        |
 | Envelope integration test                             | `src/app.module.spec.ts`                                               | Response Envelope        |
 | Lint exceptions for Nest                              | `oxlint.config.ts`                                                     | Nest-Specific Lint Notes |
 
@@ -26,7 +26,7 @@ Rules marked **[enforced]** are checked by `pnpm --filter api deps` (dependency-
 ```
 apps/api/src/
 ├── main.ts / app.module.ts
-├── app/              # Framework wiring: http/ (response envelope), config, logger, base classes
+├── app/              # Cross-cutting framework code, grouped by concern (see "Structure of app/")
 ├── modules/<ctx>/    # Business contexts (one folder per bounded context)
 │   ├── <ctx>.module.ts
 │   ├── domain/           # Pure business logic; aggregates, value objects, events/
@@ -37,6 +37,25 @@ apps/api/src/
 ```
 
 Create a layer folder only when the module needs it (see Progressive Layering). Never add empty layers.
+
+### Structure of `app/`
+
+`app/` holds cross-cutting code that belongs to no business module. Group it **by concern**, then by role inside the concern; never dump files flat into a concern folder once it has two roles.
+
+```
+app/
+├── base/                    # Base classes modules extend (imported by modules)
+│   └── business-error.ts
+└── http/                    # HTTP concern
+    ├── errors/              # HttpError hierarchy (imported by presentation/)
+    │   └── http-errors.ts
+    └── envelope/            # Response envelope: types, interceptor, filter, module (wiring only)
+```
+
+- **Two kinds of code, two folders**: what modules import (`base/`, `http/errors/`) is separated from wiring only `AppModule` uses (`http/envelope/`, future `config/`, `logger/`). Modules may import only the first kind (enforced)
+- A concern folder gets a `<concern>.module.ts` when it registers providers; `AppModule` imports that module and nothing else from it
+- One concept per file, named after it (`http-errors.ts`, `envelope.filter.ts`, `envelope.interceptor.ts`); specs sit next to the file. No `index.ts` barrels: import the file directly with the `@/` alias
+- Add a new concern folder (`app/config/`, `app/logger/`) only when a requirement needs it
 
 ## Vertical Structure (Modules)
 
@@ -63,7 +82,7 @@ When stuck: about to put a file in a folder named after a technical role at the 
 - **[enforced]** `domain/` MUST NOT import npm packages (no `@nestjs/*`, ORMs, loggers, crypto libs). Exempt: test files and `neverthrow`
 - **[enforced]** `presentation/` MUST NOT import database packages (`@workspace/database`, `drizzle-orm`, `pg`, `postgres`); go through application services
 - **[enforced]** `application/services/` MUST NOT runtime-import `@workspace/database`; type-only imports are allowed
-- **[enforced]** `modules/` MAY import only `app/base/` and `app/http/`; all other `app/` code is wiring (`modules-app-allowlist`)
+- **[enforced]** `modules/` MAY import only `app/base/` and `app/http/errors/`; all other `app/` code, including `app/http/envelope/`, is wiring (`modules-app-allowlist`)
 - **[enforced]** `domain/`, `application/`, `infrastructure/` MUST NOT import `app/http/`; HTTP errors belong to `presentation/` (`http-errors-presentation-only`)
 - **[convention]** Use the `@/` alias for cross-directory imports; `../` imports are banned by lint. Same-directory `./x.js` is fine
 - Imports of local files use the `.js` extension (NodeNext resolution)
@@ -79,10 +98,10 @@ When stuck: about to put a file in a folder named after a technical role at the 
 
 Expected failures are values, not exceptions: `Result` / `ResultAsync` from `neverthrow`. **Every error is a class** extending one of two bases; never use strings, plain objects, or bare `Error` as `E`.
 
-| Layer                                        | Error base class                                   | Defined in                     | Carries                         |
-| -------------------------------------------- | -------------------------------------------------- | ------------------------------ | ------------------------------- |
-| `domain/`, `application/`, `infrastructure/` | `BusinessError` (`src/app/base/business-error.ts`) | `<ctx>/domain/<ctx>.errors.ts` | user-friendly `message`         |
-| `presentation/`                              | `HttpError` (`src/app/http/http-errors.ts`)        | `src/app/http/http-errors.ts`  | `statusCode`, `name`, `message` |
+| Layer                                        | Error base class                                   | Defined in                           | Carries                         |
+| -------------------------------------------- | -------------------------------------------------- | ------------------------------------ | ------------------------------- |
+| `domain/`, `application/`, `infrastructure/` | `BusinessError` (`src/app/base/business-error.ts`) | `<ctx>/domain/<ctx>.errors.ts`       | user-friendly `message`         |
+| `presentation/`                              | `HttpError` (`src/app/http/errors/http-errors.ts`) | `src/app/http/errors/http-errors.ts` | `statusCode`, `name`, `message` |
 
 **Business errors**
 
@@ -124,13 +143,13 @@ Every HTTP response uses one of two shapes; clients switch on `ok`:
 { "ok": false, "error": { "code": "BAD_REQUEST", "message": "Please enter a name." } }
 ```
 
-- Implemented once, globally, in `src/app/http/` and registered in `AppModule` via `APP_INTERCEPTOR` / `APP_FILTER`. Do not re-register per module
+- Implemented once, globally, in `src/app/http/envelope/`; `EnvelopeModule` registers it via `APP_INTERCEPTOR` / `APP_FILTER` and `AppModule` imports that module. Do not re-register per module
 - `EnvelopeInterceptor` unwraps the controller's `Result`: `Ok` → `{ ok: true, data }` (empty value → `data: null`); `Err` → the `HttpError` is thrown into the pipeline
 - `EnvelopeFilter` renders every thrown value: `HttpError` → its `statusCode`, `name` as `code`, and `message`. Controllers never build `{ ok, data }` themselves
 - Framework errors are mapped automatically: unknown route → `NOT_FOUND`, validation message list → `VALIDATION_FAILED` (400), any other Nest `HttpException` → its status name, anything else → `INTERNAL_ERROR` (500) with a generic message
 - `code` values are stable once released; `message` is human-readable and may change
 - `StreamableFile` responses (downloads) skip the envelope. Handlers using `@Res()` bypass it; avoid `@Res()`
-- Change envelope behavior only in `app/http/` and cover it with a test in `app.module.spec.ts`
+- Change envelope behavior only in `app/http/envelope/` and cover it with a test in `app.module.spec.ts`
 
 ## Cross-Context Communication
 

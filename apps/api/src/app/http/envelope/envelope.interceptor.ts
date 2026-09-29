@@ -2,9 +2,9 @@ import { Injectable, StreamableFile } from '@nestjs/common'
 import { Err, Ok } from 'neverthrow'
 import { map } from 'rxjs'
 
-import { success } from '@/app/http/envelope.js'
+import { success } from '@/app/http/envelope/envelope.js'
 
-import type { ApiEnvelope } from '@/app/http/envelope.js'
+import type { ApiEnvelope } from '@/app/http/envelope/envelope.js'
 import type { CallHandler, ExecutionContext, NestInterceptor } from '@nestjs/common'
 import type { Observable } from 'rxjs'
 
