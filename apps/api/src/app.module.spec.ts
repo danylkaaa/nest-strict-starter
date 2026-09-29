@@ -34,6 +34,13 @@ describe('response envelope', () => {
     })
   })
 
+  it('rejects a query that fails its zod DTO with VALIDATION_FAILED', async () => {
+    const response = await request(app.getHttpServer()).get('/greeting?name=a&name=b')
+    expect(response.status).toBe(400)
+    expect(response.body).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } })
+    expect(response.body.error.message).toContain('name')
+  })
+
   it('wraps an unknown route in { ok: false, error }', async () => {
     const response = await request(app.getHttpServer()).get('/nope')
     expect(response.status).toBe(404)

@@ -1,4 +1,6 @@
 import { HttpException, HttpStatus } from '@nestjs/common'
+import { ZodValidationException } from 'nestjs-zod'
+import { ZodError } from 'zod'
 
 import { failure } from '@/app/http/envelope/envelope.js'
 import { HttpError, InternalServerError } from '@/app/http/errors/http-errors.js'
@@ -19,6 +21,18 @@ function messageOf(exception: HttpException): { message: string; isList: boolean
 export function toErrorEnvelope(exception: unknown): { status: number; body: ErrorEnvelope } {
   if (exception instanceof HttpError) {
     return { status: exception.statusCode, body: failure(exception.name, exception.message) }
+  }
+
+  // A request DTO (body, query, params) failed its zod schema.
+  if (exception instanceof ZodValidationException) {
+    const zodError = exception.getZodError()
+    const message =
+      zodError instanceof ZodError
+        ? zodError.issues
+            .map((issue) => `${issue.path.join('.') || 'request'}: ${issue.message}`)
+            .join('; ')
+        : exception.message
+    return { status: BAD_REQUEST, body: failure('VALIDATION_FAILED', message) }
   }
 
   // Errors raised by the framework itself (unknown route, rejected payload, ...).

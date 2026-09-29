@@ -47,6 +47,14 @@ export default {
       to: { path: '^src/app/', pathNot: '^src/app/(base|http/errors)/' },
     },
     {
+      name: 'no-outward-presentation-import',
+      severity: 'error',
+      comment:
+        'presentation (controllers, zod DTOs) depends on inner layers, never the reverse. domain/application/infrastructure must not import presentation/.',
+      from: { path: '^src/modules/[^/]+/(domain|application|infrastructure)/' },
+      to: { path: '^src/modules/[^/]+/presentation/' },
+    },
+    {
       name: 'shared-kernel-no-modules',
       severity: 'error',
       comment: 'shared-kernel must not import business modules.',

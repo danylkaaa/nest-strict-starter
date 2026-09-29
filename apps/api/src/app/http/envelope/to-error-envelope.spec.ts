@@ -1,5 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { ZodValidationException } from 'nestjs-zod'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 
 import { toErrorEnvelope } from '@/app/http/envelope/to-error-envelope.js'
 import { ConflictError } from '@/app/http/errors/http-errors.js'
@@ -19,6 +21,16 @@ describe('toErrorEnvelope', () => {
       status: 404,
       body: { ok: false, error: { code: 'NOT_FOUND', message: 'Cannot GET /nope' } },
     })
+  })
+
+  it('maps a zod DTO failure to VALIDATION_FAILED with the field path', () => {
+    const parsed = z
+      .object({ user: z.object({ age: z.number() }) })
+      .safeParse({ user: { age: 'x' } })
+    const result = toErrorEnvelope(new ZodValidationException(parsed.error))
+    expect(result.status).toBe(400)
+    expect(result.body.error.code).toBe('VALIDATION_FAILED')
+    expect(result.body.error.message).toContain('user.age')
   })
 
   it('maps a validation message list to VALIDATION_FAILED', () => {

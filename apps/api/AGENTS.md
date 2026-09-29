@@ -14,7 +14,8 @@ Where each pattern lives in code. Copy the reference implementation instead of i
 | Result-returning domain logic                         | `greeting/domain/greeting.ts`                                          | Error Handling           |
 | HTTP error classes                                    | `src/app/http/errors/http-errors.ts`                                   | Error Handling           |
 | Business error → HTTP error, `Result<Dto, HttpError>` | `greeting/presentation/greeting.controller.ts`                         | Error Handling           |
-| Response DTO                                          | `greeting/presentation/greeting-response.dto.ts`                       | Error Handling           |
+| Zod request/response DTOs                             | `greeting/presentation/dtos/`                                          | DTOs (zod + nestjs-zod)  |
+| Global validation pipe                                | `src/app/http/validation/validation.module.ts`                         | DTOs (zod + nestjs-zod)  |
 | Response envelope                                     | `src/app/http/envelope/`                                               | Response Envelope        |
 | Envelope integration test                             | `src/app.module.spec.ts`                                               | Response Envelope        |
 | Lint exceptions for Nest                              | `oxlint.config.ts`                                                     | Nest-Specific Lint Notes |
@@ -32,7 +33,7 @@ apps/api/src/
 │   ├── domain/           # Pure business logic; aggregates, value objects, events/
 │   ├── application/      # ports/ (interfaces + Symbol tokens), services/
 │   ├── infrastructure/   # repositories/, adapters/ (implement ports)
-│   └── presentation/     # controllers, DTOs
+│   └── presentation/     # controllers, dtos/ (zod DTO classes)
 └── shared-kernel/    # Pure cross-context contracts
 ```
 
@@ -49,7 +50,8 @@ app/
 └── http/                    # HTTP concern
     ├── errors/              # HttpError hierarchy (imported by presentation/)
     │   └── http-errors.ts
-    └── envelope/            # Response envelope: types, interceptor, filter, module (wiring only)
+    ├── envelope/            # Response envelope: types, interceptor, filter, module (wiring only)
+    └── validation/          # Global ZodValidationPipe module (wiring only)
 ```
 
 - **Two kinds of code, two folders**: what modules import (`base/`, `http/errors/`) is separated from wiring only `AppModule` uses (`http/envelope/`, future `config/`, `logger/`). Modules may import only the first kind (enforced)
@@ -83,6 +85,7 @@ When stuck: about to put a file in a folder named after a technical role at the 
 - **[enforced]** `presentation/` MUST NOT import database packages (`@workspace/database`, `drizzle-orm`, `pg`, `postgres`); go through application services
 - **[enforced]** `application/services/` MUST NOT runtime-import `@workspace/database`; type-only imports are allowed
 - **[enforced]** `modules/` MAY import only `app/base/` and `app/http/errors/`; all other `app/` code, including `app/http/envelope/`, is wiring (`modules-app-allowlist`)
+- **[enforced]** `domain/`, `application/`, `infrastructure/` MUST NOT import `presentation/` (`no-outward-presentation-import`)
 - **[enforced]** `domain/`, `application/`, `infrastructure/` MUST NOT import `app/http/`; HTTP errors belong to `presentation/` (`http-errors-presentation-only`)
 - **[convention]** Use the `@/` alias for cross-directory imports; `../` imports are banned by lint. Same-directory `./x.js` is fine
 - Imports of local files use the `.js` extension (NodeNext resolution)
@@ -93,6 +96,27 @@ When stuck: about to put a file in a folder named after a technical role at the 
 - Domain tests use vitest and domain classes only; never `Test.createTestingModule`
 - Aggregates expose business methods (`pay()`, `cancel()`); no public setters
 - Wanting a library in the domain means the logic belongs in application or infrastructure
+
+## DTOs (zod + nestjs-zod)
+
+Every request input (`@Body()`, `@Query()`, `@Param()`) and every response payload is a **DTO class created with zod and `nestjs-zod`**. No hand-written DTO classes, no `class-validator` / `class-transformer` decorators, no inline object types or bare `string` for controller inputs and outputs.
+
+```ts
+// modules/<ctx>/presentation/dtos/greeting-query.dto.ts
+import { createZodDto } from 'nestjs-zod'
+import { z } from 'zod'
+
+export const GreetingQuerySchema = z.object({ name: z.string().default('world') })
+export class GreetingQueryDto extends createZodDto(GreetingQuerySchema) {}
+```
+
+- **Location and naming**: `<ctx>/presentation/dtos/<name>.dto.ts`, one DTO per file. Export the schema as `XxxSchema` and the class as `XxxDto`; suffix `RequestDto` / `QueryDto` / `ResponseDto` by role when a module has several
+- **Requests**: type the handler parameter with the DTO class (`@Query() query: GreetingQueryDto`). The global `ZodValidationPipe` (`app/http/validation/`) validates and transforms it; a failure becomes `VALIDATION_FAILED` (400) in the envelope automatically. Controllers never re-validate
+- **Responses**: build them with `XxxResponseDto.create(data)`, which parses through the schema and strips unknown fields (a failure is a bug and returns a generic 500). Return them inside the `Result` (see Error Handling). Never return a domain object, aggregate, or database row directly
+- **What a schema validates**: shape, types, and format only (string, email, uuid, ranges, defaults, trimming). Business rules (uniqueness, "name must not be blank", state transitions) stay in the domain and come back as `BusinessError`s. Do not duplicate a domain rule in a schema
+- **Layering**: DTOs and zod schemas are a presentation concern. `domain/`, `application/`, and `infrastructure/` MUST NOT import `presentation/` (enforced) and `domain/` MUST NOT import `zod` (enforced). Application services take and return plain domain/application types; the controller maps DTO ⇄ those types
+- Derive variants from the schema instead of rewriting it (`.pick()`, `.omit()`, `.partial()`, `.extend()`); infer types with `z.infer` only when a plain type is needed
+- Reference: `modules/greeting/presentation/dtos/`
 
 ## Error Handling (neverthrow + error classes)
 
@@ -119,7 +143,7 @@ Expected failures are values, not exceptions: `Result` / `ResultAsync` from `nev
 
 **Controllers**
 
-- Every controller handler returns `Result<Dto, HttpError>` (or `ResultAsync<Dto, HttpError>`). It never returns a bare value and never throws for an expected failure
+- Every controller handler takes zod DTOs for its inputs and returns `Result<XxxResponseDto, HttpError>` (or `ResultAsync<Dto, HttpError>`). It never returns a bare value and never throws for an expected failure
 - The controller converts inner-layer errors to HTTP errors with `.mapErr(...)`, passing the business error's `message` through so users see the friendly text
 - Keep the conversion in a `Record<XxxError['name'], (message: string) => HttpError>` so a new business error fails typecheck until it is mapped
 - Reference: `modules/greeting/presentation/greeting.controller.ts`
@@ -146,7 +170,7 @@ Every HTTP response uses one of two shapes; clients switch on `ok`:
 - Implemented once, globally, in `src/app/http/envelope/`; `EnvelopeModule` registers it via `APP_INTERCEPTOR` / `APP_FILTER` and `AppModule` imports that module. Do not re-register per module
 - `EnvelopeInterceptor` unwraps the controller's `Result`: `Ok` → `{ ok: true, data }` (empty value → `data: null`); `Err` → the `HttpError` is thrown into the pipeline
 - `EnvelopeFilter` renders every thrown value: `HttpError` → its `statusCode`, `name` as `code`, and `message`. Controllers never build `{ ok, data }` themselves
-- Framework errors are mapped automatically: unknown route → `NOT_FOUND`, validation message list → `VALIDATION_FAILED` (400), any other Nest `HttpException` → its status name, anything else → `INTERNAL_ERROR` (500) with a generic message
+- Framework errors are mapped automatically: unknown route → `NOT_FOUND`, zod DTO failure (`ZodValidationException`) or Nest validation message list → `VALIDATION_FAILED` (400, message lists `path: reason` pairs), any other Nest `HttpException` → its status name, anything else → `INTERNAL_ERROR` (500) with a generic message
 - `code` values are stable once released; `message` is human-readable and may change
 - `StreamableFile` responses (downloads) skip the envelope. Handlers using `@Res()` bypass it; avoid `@Res()`
 - Change envelope behavior only in `app/http/envelope/` and cover it with a test in `app.module.spec.ts`

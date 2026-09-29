@@ -2,7 +2,8 @@ import { Controller, Get, Query } from '@nestjs/common'
 
 import { BadRequestError } from '@/app/http/errors/http-errors.js'
 import { GreetingService } from '@/modules/greeting/application/services/greeting.service.js'
-import { GreetingResponseDto } from '@/modules/greeting/presentation/greeting-response.dto.js'
+import { GreetingQueryDto } from '@/modules/greeting/presentation/dtos/greeting-query.dto.js'
+import { GreetingResponseDto } from '@/modules/greeting/presentation/dtos/greeting-response.dto.js'
 
 import type { HttpError } from '@/app/http/errors/http-errors.js'
 import type { GreetingError } from '@/modules/greeting/domain/greeting.errors.js'
@@ -18,10 +19,10 @@ export class GreetingController {
   constructor(private readonly greetingService: GreetingService) {}
 
   @Get()
-  greet(@Query('name') name = 'world'): Result<GreetingResponseDto, HttpError> {
+  greet(@Query() query: GreetingQueryDto): Result<GreetingResponseDto, HttpError> {
     return this.greetingService
-      .greet(name)
-      .map((message) => new GreetingResponseDto(message))
+      .greet(query.name)
+      .map((message) => GreetingResponseDto.create({ message }))
       .mapErr((error) => HTTP_ERRORS[error.name](error.message))
   }
 }
