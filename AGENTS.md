@@ -61,6 +61,17 @@ Single package: `pnpm --filter api <script>`.
 - Errors as values: expected failures are `neverthrow` `Result`s, not exceptions (see `apps/api/AGENTS.md`)
 - Organize vertically by business capability (`modules/<context>/`), not by technical layer; each module owns its full stack (see `apps/api/AGENTS.md`, Vertical Structure)
 
+## Implementing Plans and Specs (agents)
+
+Code for `apps/api` is written by agents, not directly by the orchestrating session. Use the `implement-plan` skill whenever a plan, spec, or feature request needs implementing there.
+
+- `.claude/skills/implement-plan/SKILL.md`: the orchestrator. It loops implementer → reviewer until the reviewer approves or **5 attempts** are used, then reports and stops. It never writes API code itself and never commits
+- `.claude/agents/api-implementer.md`: Sonnet. Reads both `AGENTS.md` files and the reference implementations, works test-first, runs `pnpm check`, reports `DONE` or `BLOCKED`
+- `.claude/agents/api-reviewer.md`: Opus, high effort, read-only. Checks the spec and every pattern in `apps/api/AGENTS.md`, runs `pnpm check`, and answers `VERDICT: APPROVE` or `VERDICT: CHANGES_REQUESTED` with numbered, actionable findings. Only `blocker` and `major` findings send work back
+- Agents cannot ask the user questions: an ambiguous spec or an "ask first" case ends in `BLOCKED`, and the orchestrator asks
+- **When a pattern changes, update the agents too.** The agents point at `AGENTS.md` instead of copying it, so most changes need no edit here. Change an agent file only when its process or checklist changes
+- Small edits that do not need a spec (typo, one-line fix) can be done directly
+
 ## Quality Gates
 
 All must pass before a change is done: `pnpm check` (zero type errors, zero lint warnings, format clean, zero dependency violations, tests green). If a rule seems wrong, stop and ask; do not add `// oxlint-disable` or edit rule configs on your own.
