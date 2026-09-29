@@ -1,9 +1,20 @@
----
-paths:
-  - apps/api/**
----
+# apps/api — NestJS API
 
-# API Rules (NestJS)
+NestJS API using DDD-style modules. Read the whole file before writing code here. Root rules (monorepo, tooling, git) are in `/AGENTS.md`.
+
+## Pattern Index
+
+Where each pattern lives in code. Copy the reference implementation instead of inventing a variant.
+
+| Pattern                            | Reference implementation                       | Section                  |
+| ---------------------------------- | ---------------------------------------------- | ------------------------ |
+| Module layout, layers              | `src/modules/greeting/`                        | Directory Layout         |
+| Boundary rules                     | `.dependency-cruiser.mjs`                      | Dependency Direction     |
+| Result-based errors                | `greeting/domain/greeting.ts`                  | Error Handling           |
+| Error tag → `ApiException` mapping | `greeting/presentation/greeting.controller.ts` | Error Handling           |
+| Response envelope                  | `src/app/http/`                                | Response Envelope        |
+| Envelope integration test          | `src/app.module.spec.ts`                       | Response Envelope        |
+| Lint exceptions for Nest           | `oxlint.config.ts`                             | Nest-Specific Lint Notes |
 
 Rules marked **[enforced]** are checked by `pnpm --filter api deps` (dependency-cruiser, `apps/api/.dependency-cruiser.mjs`) or oxlint. Rules marked **[convention]** are not machine-checked; follow them anyway.
 
