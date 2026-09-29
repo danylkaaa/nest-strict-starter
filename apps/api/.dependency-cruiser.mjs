@@ -1,3 +1,7 @@
+// npm packages resolve to their pnpm store path (.../node_modules/<pkg>/...), and workspace
+// packages to their source folder, so database rules match on those resolved paths.
+const DATABASE_PATH = '/node_modules/(drizzle-orm|pg|postgres)/|(^|/)packages/database/'
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 export default {
   forbidden: [
@@ -47,7 +51,7 @@ export default {
         'Services must not runtime-import @workspace/database. Go through repository ports instead. Type-only imports are allowed.',
       from: { path: '^src/modules/[^/]+/application/services/' },
       to: {
-        path: '^@workspace/database',
+        path: DATABASE_PATH,
         dependencyTypesNot: ['type-only'],
       },
     },
@@ -55,12 +59,15 @@ export default {
       name: 'domain-no-external-libs',
       severity: 'error',
       comment:
-        'Domain layer must stay free of runtime libraries (@nestjs/*, drizzle, bcrypt, pino, ...). Test files (vitest) are exempt.',
+        'Domain layer must stay free of runtime libraries (@nestjs/*, drizzle, bcrypt, pino, ...). Exempt: test files (vitest) and neverthrow (Result types for expected failures).',
       from: {
         path: '^src/modules/[^/]+/domain/',
         pathNot: '\\.spec\\.ts$',
       },
-      to: { dependencyTypes: ['npm', 'npm-dev', 'npm-optional', 'npm-peer', 'npm-no-pkg'] },
+      to: {
+        dependencyTypes: ['npm', 'npm-dev', 'npm-optional', 'npm-peer', 'npm-no-pkg'],
+        pathNot: '/node_modules/neverthrow/',
+      },
     },
     {
       name: 'presentation-no-database',
@@ -68,12 +75,11 @@ export default {
       comment:
         'Presentation layer must not access the database directly. Go through application services.',
       from: { path: '^src/modules/[^/]+/presentation/' },
-      to: { path: '^(@workspace/database|drizzle-orm|pg|postgres)($|/)' },
+      to: { path: DATABASE_PATH },
     },
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
-    includeOnly: '^src/',
     tsConfig: { fileName: 'tsconfig.json' },
     enhancedResolveOptions: {
       exportsFields: ['exports'],
