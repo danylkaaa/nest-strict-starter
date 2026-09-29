@@ -7,6 +7,17 @@ Context lives in `AGENTS.md` files (this one at the root, one per package). Clau
 - Before working in a package, read its `AGENTS.md`: `apps/api/AGENTS.md`
 - Tooling config rules load from `.claude/rules/tooling.md` via `paths:` matching
 
+## Persisting Instructions
+
+When the user gives a standing instruction ("always ...", "never ...", "from now on ...", "every X should ...", "use X for Y", "we do it this way"), do not just follow it for the current task:
+
+1. Ask whether it should be persisted in the repo, unless the user already said to write it down
+2. If yes, write it as a rule in the right place in the same commit as the related change: cross-package rules in this file; package patterns in that package's `AGENTS.md` (e.g. `apps/api/AGENTS.md`); tooling config rules in `.claude/rules/tooling.md`. Update an existing rule instead of adding a duplicate or a contradicting one
+3. Write it in the file's existing style: the rule, why it exists, where the reference implementation lives, and whether it is machine-enforced (add a lint or dependency-cruiser rule when one can enforce it)
+4. If the instruction is a one-off for the current task, do not persist it
+
+The repo is the memory: the next session only knows what is written here.
+
 ## Keeping Context Current
 
 When a change introduces or alters a pattern (error handling, response shape, a new layer, a boundary rule), update that package's `AGENTS.md` in the same commit: the rule, why it exists, and where the reference implementation lives. Root `AGENTS.md` holds only cross-package rules. A pattern documented nowhere will be reinvented differently by the next agent.
