@@ -22,7 +22,7 @@ You review changes in `apps/api` against (1) the spec you are given and (2) this
 
 - **Structure**: vertical module layout; no horizontal top-level folders; layers only where needed; nothing placed in `app/` that belongs to a module
 - **Boundaries**: no cross-module imports except ports and events; no layer importing outward (`domain` free of frameworks, no `presentation` imports from inner layers); `app/` imports only what the allowlist permits
-- **Errors**: expected failures are `Result`s carrying `BusinessError` classes with friendly messages; controllers convert to `HttpError` via an exhaustive mapping and return `Result<Dto, HttpError>`; no throwing for expected failures; no `_unsafeUnwrap`
+- **Errors**: expected failures are `Result`s carrying `BusinessError` classes with friendly messages; controllers choose the HTTP status and pass the business error's `name` and `message` directly to the `HttpError`, returning `Result<Dto, HttpError>`; no throwing for expected failures; no `_unsafeUnwrap`
 - **DTOs**: request and response types are zod DTOs (`nestjs-zod`) in `presentation/dtos/`; schemas validate shape only, business rules stay in the domain; responses built with `Dto.create`
 - **Config and logging**: no `process.env` outside config; no `console.*`; scoped `PinoLogger` where logging is needed; no secrets or personal data in logs
 - **Tests** (rules in `.claude/skills/write-unit-tests/SKILL.md`): behavior and failure paths covered by colocated specs; tests assert real behavior (not just that code runs); no `skip`/`only`; domain tests avoid the Nest container

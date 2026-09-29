@@ -1,6 +1,6 @@
-import { Module } from '@nestjs/common'
-import { APP_PIPE } from '@nestjs/core'
-import { ZodValidationPipe } from 'nestjs-zod'
+import { Module } from '@nestjs/common';
+import { APP_PIPE } from '@nestjs/core';
+import { ZodValidationPipe } from 'nestjs-zod';
 
 /**
  * Validates every `@Body()`, `@Query()` and `@Param()` typed with a zod DTO class.

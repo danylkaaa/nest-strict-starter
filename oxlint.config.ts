@@ -1,10 +1,12 @@
-import { base, depend, typeAware, unicorn } from '@infra-x/code-quality/lint'
-import { defineConfig } from 'oxlint'
+import { base, depend, typeAware, unicorn } from '@infra-x/code-quality/lint';
+import { defineConfig } from 'oxlint';
 
 // typeAware() is root-config-only; package configs extend this file.
 export default defineConfig({
   extends: [base(), typeAware(), unicorn(), depend()],
   rules: {
     'import/no-cycle': 'error',
+    // Object keys in alphabetical order; oxfmt has no key-sorting option
+    'sort-keys': ['error', 'asc', { caseSensitive: false, natural: true }],
   },
-})
+});

@@ -1,3 +1,3 @@
-import config from '../../oxfmt.config.ts'
+import config from '../../oxfmt.config.ts';
 
-export default config
+export default config;

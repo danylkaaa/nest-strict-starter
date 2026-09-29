@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest';
 
 import {
   BadRequestError,
@@ -9,7 +9,7 @@ import {
   NotFoundError,
   UnauthorizedError,
   UnprocessableEntityError,
-} from '@/app/http/errors/http-errors.js'
+} from '@/app/http/errors/http-errors.js';
 
 describe('http errors', () => {
   it.each([
@@ -21,16 +21,24 @@ describe('http errors', () => {
     [new UnprocessableEntityError(), 422, 'UNPROCESSABLE_ENTITY'],
     [new InternalServerError(), 500, 'INTERNAL_ERROR'],
   ])('%o has status %i and name %s', (error, statusCode, name) => {
-    expect(error).toBeInstanceOf(HttpError)
-    expect(error).toBeInstanceOf(Error)
-    expect(error.statusCode).toBe(statusCode)
-    expect(error.name).toBe(name)
-    expect(error.message).not.toBe('')
-  })
+    expect(error).toBeInstanceOf(HttpError);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.statusCode).toBe(statusCode);
+    expect(error.name).toBe(name);
+    expect(error.message).not.toBe('');
+  });
 
   it('accepts a custom message', () => {
     expect(new NotFoundError('Article 42 does not exist.').message).toBe(
       'Article 42 does not exist.',
-    )
-  })
-})
+    );
+  });
+
+  it('uses a business error name as the bad request code', () => {
+    const error = new BadRequestError('Please enter a name.', 'GreetingNameEmptyError');
+
+    expect(error.statusCode).toBe(400);
+    expect(error.name).toBe('GreetingNameEmptyError');
+    expect(error.message).toBe('Please enter a name.');
+  });
+});

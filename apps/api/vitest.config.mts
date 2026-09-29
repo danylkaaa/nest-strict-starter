@@ -1,35 +1,21 @@
-import swc from 'unplugin-swc'
-import tsconfigPaths from 'vite-tsconfig-paths'
-import { defineConfig } from 'vitest/config'
+import swc from 'unplugin-swc';
+import tsconfigPaths from 'vite-tsconfig-paths';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  test: {
-    globals: false,
-    environment: 'node',
-    env: { LOG_LEVEL: 'silent' },
-    root: './',
-    include: ['src/**/*.spec.ts'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html'],
-      reportsDirectory: './coverage',
-      include: ['src/**/*.ts'],
-      exclude: ['**/*.spec.ts', '**/*.e2e-spec.ts', '**/index.ts', '**/*.module.ts'],
-    },
-  },
   plugins: [
     swc.vite({
       jsc: {
+        keepClassNames: true,
         parser: {
-          syntax: 'typescript',
           decorators: true,
-        },
-        transform: {
-          legacyDecorator: true,
-          decoratorMetadata: true,
+          syntax: 'typescript',
         },
         target: 'esnext',
-        keepClassNames: true,
+        transform: {
+          decoratorMetadata: true,
+          legacyDecorator: true,
+        },
       },
       module: {
         type: 'es6',
@@ -37,4 +23,18 @@ export default defineConfig({
     }),
     tsconfigPaths(),
   ],
-})
+  test: {
+    coverage: {
+      exclude: ['**/*.spec.ts', '**/*.e2e-spec.ts', '**/index.ts', '**/*.module.ts'],
+      include: ['src/**/*.ts'],
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      reportsDirectory: './coverage',
+    },
+    env: { LOG_LEVEL: 'silent' },
+    environment: 'node',
+    globals: false,
+    include: ['src/**/*.spec.ts'],
+    root: './',
+  },
+});

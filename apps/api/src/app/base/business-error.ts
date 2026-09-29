@@ -1,4 +1,4 @@
-export const DEFAULT_BUSINESS_ERROR_MESSAGE = 'Something went wrong. Please try again.'
+export const DEFAULT_BUSINESS_ERROR_MESSAGE = 'Something went wrong. Please try again.';
 
 /**
  * Base class for expected business failures raised by domain and application code.
@@ -8,6 +8,6 @@ export const DEFAULT_BUSINESS_ERROR_MESSAGE = 'Something went wrong. Please try 
  */
 export abstract class BusinessError extends Error {
   constructor(message: string = DEFAULT_BUSINESS_ERROR_MESSAGE) {
-    super(message)
+    super(message);
   }
 }

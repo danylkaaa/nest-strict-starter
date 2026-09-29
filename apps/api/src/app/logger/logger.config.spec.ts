@@ -1,56 +1,69 @@
-import { Test } from '@nestjs/testing'
-import { CLS_ID, ClsModule, ClsService } from 'nestjs-cls'
-import { pino } from 'pino'
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { pino } from 'pino';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createLoggerParams } from '@/app/logger/logger.config.js'
+import { createLoggerConfig, FILTERED_LOG_CONTEXTS } from '@/app/logger/logger.config.js';
 
-import type { AppConfig } from '@/app/config/app-config.js'
+import type { AppConfig } from '@/app/config/app-config.js';
+
+const options = (config: Partial<Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'>> = {}) =>
+  createLoggerConfig({ NODE_ENV: 'production', ...config }).pinoHttp;
 
 describe('logger config', () => {
-  let cls: ClsService
-  let lines: string[]
-  const stream = { write: (line: string) => lines.push(line) }
+  let lines: string[];
+  const stream = { write: (line: string) => lines.push(line) };
 
-  const options = (config: Partial<AppConfig> = {}) =>
-    createLoggerParams(cls, { logLevel: 'info', nodeEnv: 'production', ...config }).pinoHttp
-
-  const build = (config?: Partial<AppConfig>) => {
-    const { level, mixin } = options(config)
-    return pino({ level, mixin }, stream)
-  }
-
-  beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [ClsModule.forRoot({ global: true })],
-    }).compile()
-    cls = moduleRef.get(ClsService)
-  })
+  const build = (config?: Partial<Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'>>) => {
+    const { hooks } = options(config);
+    return pino({ hooks, level: 'trace' }, stream);
+  };
 
   beforeEach(() => {
-    lines = []
-  })
+    lines = [];
+  });
 
-  it('adds the request id of the current context to every line', () => {
-    cls.runWith({ [CLS_ID]: 'req-1' }, () => {
-      build().info('inside')
-    })
-    expect(lines).toHaveLength(1)
-    expect(lines.join('')).toContain('"requestId":"req-1"')
-  })
+  describe('log level', () => {
+    it.each([
+      ['production', 'info'],
+      ['test', 'warn'],
+      ['development', 'debug'],
+    ] as const)('defaults to the %s level when LOG_LEVEL is unset', (nodeEnv, level) => {
+      expect(options({ NODE_ENV: nodeEnv }).level).toBe(level);
+    });
 
-  it('omits the request id outside a request', () => {
-    build().info('outside')
-    expect(lines).toHaveLength(1)
-    expect(lines.join('')).not.toContain('requestId')
-  })
+    it('uses LOG_LEVEL over the NODE_ENV default when set', () => {
+      expect(options({ LOG_LEVEL: 'error', NODE_ENV: 'production' }).level).toBe('error');
+    });
+  });
 
-  it('takes the level from the config', () => {
-    expect(build({ logLevel: 'debug' }).level).toBe('debug')
-  })
+  describe('framework context filter', () => {
+    it.each(FILTERED_LOG_CONTEXTS)('drops logs from the %s context', (context) => {
+      build().info({ context }, 'framework chatter');
+
+      expect(lines).toHaveLength(0);
+    });
+
+    it.each(['Bootstrap', 'GreetingService'])('keeps logs from the %s context', (context) => {
+      build().info({ context }, 'app message');
+
+      expect(lines).toHaveLength(1);
+      expect(lines.join('')).toContain('app message');
+    });
+
+    it('keeps logs without a context', () => {
+      build().info('plain message');
+
+      expect(lines).toHaveLength(1);
+    });
+
+    it('keeps logs whose first argument is a string', () => {
+      build().warn('just text');
+
+      expect(lines).toHaveLength(1);
+    });
+  });
 
   it('pretty-prints only in development', () => {
-    expect(options({ nodeEnv: 'development' }).transport).toEqual({ target: 'pino-pretty' })
-    expect(options({ nodeEnv: 'production' }).transport).toBeUndefined()
-  })
-})
+    expect(options({ NODE_ENV: 'development' }).transport).toMatchObject({ target: 'pino-pretty' });
+    expect(options({ NODE_ENV: 'production' }).transport).toBeUndefined();
+  });
+});

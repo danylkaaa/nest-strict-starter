@@ -1,18 +1,12 @@
-import { Controller, Get, Query } from '@nestjs/common'
+import { Controller, Get, Query } from '@nestjs/common';
 
-import { BadRequestError } from '@/app/http/errors/http-errors.js'
-import { GreetingService } from '@/modules/greeting/application/services/greeting.service.js'
-import { GreetingQueryDto } from '@/modules/greeting/presentation/dtos/greeting-query.dto.js'
-import { GreetingResponseDto } from '@/modules/greeting/presentation/dtos/greeting-response.dto.js'
+import { BadRequestError } from '@/app/http/errors/http-errors.js';
+import { GreetingService } from '@/modules/greeting/application/services/greeting.service.js';
+import { GreetingQueryDto } from '@/modules/greeting/presentation/dtos/greeting-query.dto.js';
+import { GreetingResponseDto } from '@/modules/greeting/presentation/dtos/greeting-response.dto.js';
 
-import type { HttpError } from '@/app/http/errors/http-errors.js'
-import type { GreetingError } from '@/modules/greeting/domain/greeting.errors.js'
-import type { Result } from 'neverthrow'
-
-// Record keys make the mapping exhaustive: a new GreetingError fails typecheck until it is mapped.
-const HTTP_ERRORS: Record<GreetingError['name'], (message: string) => HttpError> = {
-  GreetingNameEmptyError: (message) => new BadRequestError(message),
-}
+import type { HttpError } from '@/app/http/errors/http-errors.js';
+import type { Result } from 'neverthrow';
 
 @Controller('greeting')
 export class GreetingController {
@@ -23,6 +17,6 @@ export class GreetingController {
     return this.greetingService
       .greet(query.name)
       .map((message) => GreetingResponseDto.create({ message }))
-      .mapErr((error) => HTTP_ERRORS[error.name](error.message))
+      .mapErr((error) => new BadRequestError(error.message, error.name));
   }
 }

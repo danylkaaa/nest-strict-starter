@@ -1,9 +1,9 @@
-import { randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto';
 
-import { Module } from '@nestjs/common'
-import { ClsModule } from 'nestjs-cls'
+import { Module } from '@nestjs/common';
+import { ClsModule } from 'nestjs-cls';
 
-export const REQUEST_ID_HEADER = 'X-Request-Id'
+export const REQUEST_ID_HEADER = 'X-Request-Id';
 
 /**
  * Opens an async context (nestjs-cls) for every HTTP request and gives it a unique id.
@@ -16,11 +16,11 @@ export const REQUEST_ID_HEADER = 'X-Request-Id'
     ClsModule.forRoot({
       global: true,
       middleware: {
-        mount: true,
         generateId: true,
         idGenerator: () => randomUUID(),
+        mount: true,
         setup: (cls, _req, res: { setHeader: (name: string, value: string) => void }) => {
-          res.setHeader(REQUEST_ID_HEADER, cls.getId())
+          res.setHeader(REQUEST_ID_HEADER, cls.getId());
         },
       },
     }),

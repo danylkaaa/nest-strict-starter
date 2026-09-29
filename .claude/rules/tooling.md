@@ -1,8 +1,8 @@
 ---
 paths:
-  - "**/oxlint.config.ts"
-  - "**/oxfmt.config.ts"
-  - "**/.dependency-cruiser.mjs"
+  - '**/oxlint.config.ts'
+  - '**/oxfmt.config.ts'
+  - '**/.dependency-cruiser.mjs'
   - turbo.json
   - pnpm-workspace.yaml
 ---

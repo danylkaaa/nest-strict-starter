@@ -1,23 +1,23 @@
 // npm packages resolve to their pnpm store path (.../node_modules/<pkg>/...), and workspace
 // packages to their source folder, so database rules match on those resolved paths.
-const DATABASE_PATH = '/node_modules/(drizzle-orm|pg|postgres)/|(^|/)packages/database/'
+const DATABASE_PATH = '/node_modules/(drizzle-orm|pg|postgres)/|(^|/)packages/database/';
 
 /** @type {import('dependency-cruiser').IConfiguration} */
 export default {
   forbidden: [
     {
-      name: 'no-circular',
-      severity: 'error',
       comment: 'Circular dependencies break tooling and signal layering issues.',
       from: {},
+      name: 'no-circular',
+      severity: 'error',
       to: { circular: true },
     },
     {
-      name: 'no-cross-module',
-      severity: 'error',
       comment:
         'Cross-module imports are forbidden except via contracts (events, ports). Share code via shared-kernel or decouple through events.',
       from: { path: '^src/modules/([^/]+)/' },
+      name: 'no-cross-module',
+      severity: 'error',
       to: {
         path: '^src/modules/([^/]+)/',
         pathNot: [
@@ -31,87 +31,87 @@ export default {
       },
     },
     {
-      name: 'http-errors-presentation-only',
-      severity: 'error',
       comment:
         'HTTP errors are a presentation concern. domain/application/infrastructure raise BusinessError subclasses; the controller converts them to HttpError.',
       from: { path: '^src/modules/[^/]+/(domain|application|infrastructure)/' },
+      name: 'http-errors-presentation-only',
+      severity: 'error',
       to: { path: '^src/app/http/' },
     },
     {
-      name: 'modules-app-allowlist',
-      severity: 'error',
       comment:
         'Modules may only use app/base (base classes) and app/http/errors (HTTP errors, presentation only). Other app/ code, including app/http/envelope, is wiring.',
       from: { path: '^src/modules/' },
+      name: 'modules-app-allowlist',
+      severity: 'error',
       to: { path: '^src/app/', pathNot: '^src/app/(base|http/errors)/' },
     },
     {
-      name: 'no-outward-presentation-import',
-      severity: 'error',
       comment:
         'presentation (controllers, zod DTOs) depends on inner layers, never the reverse. domain/application/infrastructure must not import presentation/.',
       from: { path: '^src/modules/[^/]+/(domain|application|infrastructure)/' },
+      name: 'no-outward-presentation-import',
+      severity: 'error',
       to: { path: '^src/modules/[^/]+/presentation/' },
     },
     {
-      name: 'shared-kernel-no-modules',
-      severity: 'error',
       comment: 'shared-kernel must not import business modules.',
       from: { path: '^src/shared-kernel/' },
+      name: 'shared-kernel-no-modules',
+      severity: 'error',
       to: { path: '^src/modules/' },
     },
     {
-      name: 'app-no-modules',
-      severity: 'error',
       comment: 'The app layer must not directly depend on business modules.',
       from: { path: '^src/app/' },
+      name: 'app-no-modules',
+      severity: 'error',
       to: { path: '^src/modules/' },
     },
     {
-      name: 'service-no-database-runtime',
-      severity: 'error',
       comment:
         'Services must not runtime-import @workspace/database. Go through repository ports instead. Type-only imports are allowed.',
       from: { path: '^src/modules/[^/]+/application/services/' },
+      name: 'service-no-database-runtime',
+      severity: 'error',
       to: {
-        path: DATABASE_PATH,
         dependencyTypesNot: ['type-only'],
+        path: DATABASE_PATH,
       },
     },
     {
-      name: 'domain-no-external-libs',
-      severity: 'error',
       comment:
         'Domain layer must stay free of runtime libraries (@nestjs/*, drizzle, bcrypt, pino, ...). Exempt: test files (vitest) and neverthrow (Result types for expected failures).',
       from: {
         path: '^src/modules/[^/]+/domain/',
         pathNot: '\\.spec\\.ts$',
       },
+      name: 'domain-no-external-libs',
+      severity: 'error',
       to: {
         dependencyTypes: ['npm', 'npm-dev', 'npm-optional', 'npm-peer', 'npm-no-pkg'],
         pathNot: '/node_modules/neverthrow/',
       },
     },
     {
-      name: 'presentation-no-database',
-      severity: 'error',
       comment:
         'Presentation layer must not access the database directly. Go through application services.',
       from: { path: '^src/modules/[^/]+/presentation/' },
+      name: 'presentation-no-database',
+      severity: 'error',
       to: { path: DATABASE_PATH },
     },
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
-    tsConfig: { fileName: 'tsconfig.json' },
     enhancedResolveOptions: {
-      exportsFields: ['exports'],
       conditionNames: ['import', 'require', 'node', 'default', 'types'],
+      exportsFields: ['exports'],
       mainFields: ['main', 'types'],
     },
     reporterOptions: {
       text: { highlightFocused: true },
     },
+    tsConfig: { fileName: 'tsconfig.json' },
   },
-}
+};

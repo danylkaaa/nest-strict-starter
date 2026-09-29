@@ -32,7 +32,7 @@ Rules marked **[enforced]** are checked by `pnpm --filter api deps` (dependency-
 apps/api/src/
 ├── main.ts / app.module.ts
 ├── app/              # Cross-cutting framework code, grouped by concern (see "Structure of app/")
-├── modules/<ctx>/    # Business contexts (one folder per bounded context)
+├── modules/<ctx>/    # Business contexts and operational capabilities
 │   ├── <ctx>.module.ts
 │   ├── domain/           # Pure business logic; aggregates, value objects, events/
 │   ├── application/      # ports/ (interfaces + Symbol tokens), services/
@@ -68,14 +68,15 @@ app/
 
 - **Two kinds of code, two folders**: what modules import (`base/`, `http/errors/`) is separated from wiring only `AppModule` uses (`http/envelope/`, `http/validation/`, `config/`, `context/`, `logger/`). Modules may import only the first kind (enforced)
 - A concern folder gets a `<concern>.module.ts` when it registers providers; `AppModule` imports that module and nothing else from it
+- **[convention]** App-wide operational endpoints live in a small module under `modules/<concern>/`; `modules/health/` is the reference. This keeps each endpoint's controller and DTO together while preserving the `Result` and response envelope rules
 - One concept per file, named after it (`http-errors.ts`, `envelope.filter.ts`, `envelope.interceptor.ts`); specs sit next to the file. No `index.ts` barrels: import the file directly with the `@/` alias
 - Add a new concern folder only when a requirement needs it
 
 ## Vertical Structure (Modules)
 
-The app is split **vertically by business capability**, not horizontally by technical layer. A module owns everything for its capability, from the HTTP endpoint down to persistence.
+The app is split **vertically by capability**, not horizontally by technical layer. A module owns everything for its capability, from the HTTP endpoint down to persistence when needed. `modules/health/` is the operational endpoint reference.
 
-- One folder per capability under `src/modules/<ctx>/` (kebab-case, singular business noun: `greeting`, `order`, `article`). It contains its own `presentation/`, `application/`, `domain/`, `infrastructure/` and `<ctx>.module.ts`
+- One folder per capability under `src/modules/<ctx>/` (kebab-case, singular noun: `greeting`, `health`, `order`). It contains only the layers it needs (`presentation/`, `application/`, `domain/`, `infrastructure/`) and `<ctx>.module.ts`
 - **MUST NOT create horizontal top-level folders** such as `src/controllers/`, `src/services/`, `src/dtos/`, `src/repositories/`, `src/entities/`, `src/utils/`, `src/common/`. Everything in `src/` is one of: `main.ts`, `app.module.ts`, `app/` (wiring), `modules/`, `shared-kernel/`
 - **A feature change touches one module.** Adding "refunds" means adding or editing `modules/order/` (or a new `modules/refund/`), not a file in every layer folder of the app. If a change needs edits in three modules, the boundaries are probably wrong: stop and ask
 - Each module is registered exactly once, in `AppModule.imports`. Nothing else imports a `*.module.ts` of a module
@@ -115,10 +116,10 @@ Every request input (`@Body()`, `@Query()`, `@Param()`) and every response paylo
 
 ```ts
 // modules/<ctx>/presentation/dtos/greeting-query.dto.ts
-import { createZodDto } from 'nestjs-zod'
-import { z } from 'zod'
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
 
-export const GreetingQuerySchema = z.object({ name: z.string().default('world') })
+export const GreetingQuerySchema = z.object({ name: z.string().default('world') });
 export class GreetingQueryDto extends createZodDto(GreetingQuerySchema) {}
 ```
 
@@ -150,14 +151,13 @@ Expected failures are values, not exceptions: `Result` / `ResultAsync` from `nev
 **HTTP errors**
 
 - Ready-made classes: `BadRequestError` (400), `UnauthorizedError` (401), `ForbiddenError` (403), `NotFoundError` (404), `ConflictError` (409), `UnprocessableEntityError` (422), `InternalServerError` (500). Each has a `statusCode`, a `name` used as the envelope `code` (e.g. `NOT_FOUND`), and a default message
-- Add a new status class in `http-errors.ts` only when a status is needed and missing. Extend a status class and override `name` only when clients must distinguish two failures with the same status
+- Add a new status class in `http-errors.ts` only when a status is needed and missing. For a mapped business error, use its `name` as the HTTP error code; add a name parameter to a status class when it first needs to carry one
 - Only `presentation/` creates HTTP errors (enforced)
 
 **Controllers**
 
 - Every controller handler takes zod DTOs for its inputs and returns `Result<XxxResponseDto, HttpError>` (or `ResultAsync<Dto, HttpError>`). It never returns a bare value and never throws for an expected failure
-- The controller converts inner-layer errors to HTTP errors with `.mapErr(...)`, passing the business error's `message` through so users see the friendly text
-- Keep the conversion in a `Record<XxxError['name'], (message: string) => HttpError>` so a new business error fails typecheck until it is mapped
+- **[convention]** The controller chooses the HTTP status in `.mapErr(...)` and passes the business error's `message` and `name` to the HTTP error, for example `new BadRequestError(error.message, error.name)`. The message stays friendly and the envelope code identifies the business failure. When a context gains errors requiring different statuses, select the status for each error explicitly
 - Reference: `modules/greeting/presentation/greeting.controller.ts`
 
 **Everywhere else**
@@ -176,7 +176,7 @@ Every HTTP response uses one of two shapes; clients switch on `ok`:
 
 ```json
 { "ok": true, "data": { "message": "Hello, Ada!" } }
-{ "ok": false, "error": { "code": "BAD_REQUEST", "message": "Please enter a name." } }
+{ "ok": false, "error": { "code": "GreetingNameEmptyError", "message": "Please enter a name." } }
 ```
 
 - Implemented once, globally, in `src/app/http/envelope/`; `EnvelopeModule` registers it via `APP_INTERCEPTOR` / `APP_FILTER` and `AppModule` imports that module. Do not re-register per module
@@ -192,17 +192,19 @@ Every HTTP response uses one of two shapes; clients switch on `ok`:
 All configuration comes from environment variables, validated once at startup and read through a typed class. Nothing reads `process.env` directly except `config.module.ts`.
 
 - **Library**: `nest-typed-config` (`TypedConfigModule.forRoot` with `dotenvLoader()`), validated with **zod** through its `validate` option, so config follows the same zod convention as DTOs
-- **Schema**: `src/app/config/app-config.ts` declares the env variables and maps them to camelCase fields. `AppConfig` (a `createZodDto` class) is both the type and the injection token: `constructor(private readonly config: AppConfig)`
+- **Schema**: `src/app/config/app-config.ts` declares the env variables as a plain `z.object`. **No `.transform` and no renaming**: config keys keep their `UPPER_CASE` env names (`config.PORT`, `config.LOG_LEVEL`). `AppConfig` (a `createZodDto` class) is both the type and the injection token: `constructor(private readonly config: AppConfig)`
 - **Fail fast**: invalid or missing config throws at boot and the app does not start. Give a variable a `.default()` only when a safe default exists; secrets and URLs never get defaults
-- **Adding a setting**: add it to `AppConfigSchema` (env name in, camelCase out), add it to `.env.example` with a comment, add a case to `app-config.spec.ts`. Never hard-code a value that could differ per environment
-- `ConfigModule` is global, imported once in `AppModule`. `.env` is git-ignored; `.env.example` is committed
-- **Current variables**: `NODE_ENV` (`development` | `test` | `production`), `PORT` (default 3000), `LOG_LEVEL` (`trace` … `silent`, default `info`)
+- **Adding a setting**: add it to `AppConfigSchema` (the key is the env name, `UPPER_CASE`; no transform), add it to `.env.example` with a comment, add a case to `app-config.spec.ts`. Never hard-code a value that could differ per environment
+- `ConfigModule` is global, imported once in `AppModule`. `.env` is git-ignored (create it with `cp .env.example .env`); `.env.example` is committed and lists every variable
+- **Current variables**: `NODE_ENV` (`development` | `test` | `production`), `PORT` (default 3000), `LOG_LEVEL` (optional, `trace` … `silent`; when unset the level follows `NODE_ENV`, see Logging)
 - **Modules do not import `app/config`** (enforced by the app allowlist). When a module needs a setting, ask before choosing how to pass it in; do not widen the allowlist on your own
 - Reference: `src/app/config/`
 
 ## Logging and Request Context (pino + nestjs-cls)
 
-- **Logger**: `pino` through `nestjs-pino`. Output is JSON (pretty in `NODE_ENV=development`); level from `AppConfig.logLevel`. `main.ts` installs it as the Nest logger (`bufferLogs` + `app.useLogger`), so framework logs use it too
+- **Logger**: `pino` through `nestjs-pino`. Output is JSON (pretty in `NODE_ENV=development`); level is `AppConfig.LOG_LEVEL` when set (it overrides everything), otherwise the `NODE_ENV` default: production `info`, test `warn`, development `debug`. `main.ts` installs it as the Nest logger (`bufferLogs` + `app.useLogger`), so framework logs use it too
+- **Startup output**: after `app.listen`, `main.ts` logs one banner in every environment (context `Bootstrap`): Environment, Address, Port, Node, then a group of endpoint links (`- App`, `- Health`). It is built by the pure `formatStartupBanner` (`src/app/logger/startup-banner.ts`) from `{ rows: [label, value][] }` groups (labels aligned per group, groups split by a blank line). Nest's own bootstrap chatter is always dropped by a pino `hooks.logMethod` in `logger.config.ts`: logs whose `context` is in `FILTERED_LOG_CONTEXTS` (`RoutesResolver`, `RouterExplorer`, `InstanceLoader`, `NestFactory`, `NestApplication`) are not written at any level. Request, application, and `Bootstrap` logs are unaffected; add a context to that constant to hide another framework logger. When adding a public endpoint worth showing (docs, metrics), add it to the banner's link group in `main.ts`
+- Dev logs are pretty-printed on a single line with `[context]` prefixes; production logs stay full JSON
 - **Request context**: `nestjs-cls` opens an async context per HTTP request (`src/app/context/`). Every request gets a **unique UUID, always generated server-side**; a client-supplied `X-Request-Id` is ignored. It is returned in the `X-Request-Id` response header and available via `ClsService.getId()`
 - **`requestId` on every line**: the logger `mixin` adds `requestId` from the context to every log line, including the automatic `request completed` line. Never pass it by hand
 - **Scoped logger**: inject `PinoLogger` and set the class as context, so lines carry `context` and `requestId`:
