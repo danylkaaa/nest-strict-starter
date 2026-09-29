@@ -47,4 +47,12 @@ All must pass before a change is done: `pnpm check` (zero type errors, zero lint
 
 ## Git
 
-All comments, commit messages, and docs are in English. Use conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`).
+All comments, commit messages, and docs are in English. Commit messages follow Conventional Commits, enforced by commitlint (`commitlint.config.mjs`); use the `commit-message` skill when writing them.
+
+Husky hooks (installed by `pnpm install` via `prepare`):
+
+- `pre-commit`: `lint-staged` formats (oxfmt) and lints (oxlint --fix) staged files
+- `commit-msg`: commitlint validates the message
+- `pre-push`: `pnpm check` (typecheck, lint, format:check, deps, test)
+
+Never bypass hooks with `--no-verify`; fix the cause instead.

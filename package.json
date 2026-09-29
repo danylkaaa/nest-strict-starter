@@ -12,17 +12,23 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "deps": "turbo run deps",
-    "check": "turbo run typecheck lint format:check deps test"
+    "check": "turbo run typecheck lint format:check deps test",
+    "prepare": "husky",
+    "commitlint": "commitlint"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
     "@infra-x/code-quality": "^0.6.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "oxfmt": "^0.71.0",
     "oxlint": "^1.86.0",
     "oxlint-tsgolint": "^7.0.2003",
     "turbo": "^2.8.20"
   },
-  "packageManager": "pnpm@10.32.1",
   "engines": {
     "node": ">=22"
-  }
+  },
+  "packageManager": "pnpm@10.32.1"
 }
