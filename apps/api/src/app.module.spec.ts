@@ -41,6 +41,20 @@ describe('response envelope', () => {
     expect(response.body.error.message).toContain('name')
   })
 
+  it('assigns a unique request id to every response', async () => {
+    const first = await request(app.getHttpServer()).get('/greeting')
+    const second = await request(app.getHttpServer()).get('/greeting')
+    const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/u
+    expect(first.headers['x-request-id']).toMatch(uuid)
+    expect(second.headers['x-request-id']).toMatch(uuid)
+    expect(first.headers['x-request-id']).not.toBe(second.headers['x-request-id'])
+  })
+
+  it('ignores a client-supplied request id', async () => {
+    const response = await request(app.getHttpServer()).get('/greeting').set('X-Request-Id', 'evil')
+    expect(response.headers['x-request-id']).not.toBe('evil')
+  })
+
   it('wraps an unknown route in { ok: false, error }', async () => {
     const response = await request(app.getHttpServer()).get('/nope')
     expect(response.status).toBe(404)

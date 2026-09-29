@@ -13,6 +13,8 @@ export default defineConfig({
   rules: {
     // NestJS exception filter .catch() is not Promise.catch()
     'promise/valid-params': 'off',
+    // Log through the pino logger so lines are structured and carry the request id
+    'no-console': 'error',
   },
   overrides: [
     {

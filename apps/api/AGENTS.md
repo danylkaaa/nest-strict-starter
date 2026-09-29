@@ -6,19 +6,23 @@ NestJS API using DDD-style modules. Read the whole file before writing code here
 
 Where each pattern lives in code. Copy the reference implementation instead of inventing a variant.
 
-| Pattern                                               | Reference implementation                                               | Section                  |
-| ----------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------ |
-| Module layout, layers                                 | `src/modules/greeting/`                                                | Directory Layout         |
-| Boundary rules                                        | `.dependency-cruiser.mjs`                                              | Dependency Direction     |
-| Business error classes                                | `greeting/domain/greeting.errors.ts`, `src/app/base/business-error.ts` | Error Handling           |
-| Result-returning domain logic                         | `greeting/domain/greeting.ts`                                          | Error Handling           |
-| HTTP error classes                                    | `src/app/http/errors/http-errors.ts`                                   | Error Handling           |
-| Business error → HTTP error, `Result<Dto, HttpError>` | `greeting/presentation/greeting.controller.ts`                         | Error Handling           |
-| Zod request/response DTOs                             | `greeting/presentation/dtos/`                                          | DTOs (zod + nestjs-zod)  |
-| Global validation pipe                                | `src/app/http/validation/validation.module.ts`                         | DTOs (zod + nestjs-zod)  |
-| Response envelope                                     | `src/app/http/envelope/`                                               | Response Envelope        |
-| Envelope integration test                             | `src/app.module.spec.ts`                                               | Response Envelope        |
-| Lint exceptions for Nest                              | `oxlint.config.ts`                                                     | Nest-Specific Lint Notes |
+| Pattern                                               | Reference implementation                                               | Section                           |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------- |
+| Module layout, layers                                 | `src/modules/greeting/`                                                | Directory Layout                  |
+| Boundary rules                                        | `.dependency-cruiser.mjs`                                              | Dependency Direction              |
+| Business error classes                                | `greeting/domain/greeting.errors.ts`, `src/app/base/business-error.ts` | Error Handling                    |
+| Result-returning domain logic                         | `greeting/domain/greeting.ts`                                          | Error Handling                    |
+| HTTP error classes                                    | `src/app/http/errors/http-errors.ts`                                   | Error Handling                    |
+| Business error → HTTP error, `Result<Dto, HttpError>` | `greeting/presentation/greeting.controller.ts`                         | Error Handling                    |
+| Zod request/response DTOs                             | `greeting/presentation/dtos/`                                          | DTOs (zod + nestjs-zod)           |
+| Global validation pipe                                | `src/app/http/validation/validation.module.ts`                         | DTOs (zod + nestjs-zod)           |
+| Typed env config (zod)                                | `src/app/config/`                                                      | Configuration (nest-typed-config) |
+| Request id + async context                            | `src/app/context/request-context.module.ts`                            | Logging and Request Context       |
+| Pino logger config                                    | `src/app/logger/logger.config.ts`                                      | Logging and Request Context       |
+| Scoped logger in a service                            | `greeting/application/services/greeting.service.ts`                    | Logging and Request Context       |
+| Response envelope                                     | `src/app/http/envelope/`                                               | Response Envelope                 |
+| Envelope integration test                             | `src/app.module.spec.ts`                                               | Response Envelope                 |
+| Lint exceptions for Nest                              | `oxlint.config.ts`                                                     | Nest-Specific Lint Notes          |
 
 Rules marked **[enforced]** are checked by `pnpm --filter api deps` (dependency-cruiser, `apps/api/.dependency-cruiser.mjs`) or oxlint. Rules marked **[convention]** are not machine-checked; follow them anyway.
 
@@ -47,6 +51,14 @@ Create a layer folder only when the module needs it (see Progressive Layering). 
 app/
 ├── base/                    # Base classes modules extend (imported by modules)
 │   └── business-error.ts
+├── config/                  # Typed, validated env config (wiring only)
+│   ├── app-config.ts        # zod schema + AppConfig token
+│   └── config.module.ts
+├── context/                 # Per-request async context + request id (wiring only)
+│   └── request-context.module.ts
+├── logger/                  # pino logger config + module (wiring only)
+│   ├── logger.config.ts
+│   └── logger.module.ts
 └── http/                    # HTTP concern
     ├── errors/              # HttpError hierarchy (imported by presentation/)
     │   └── http-errors.ts
@@ -54,10 +66,10 @@ app/
     └── validation/          # Global ZodValidationPipe module (wiring only)
 ```
 
-- **Two kinds of code, two folders**: what modules import (`base/`, `http/errors/`) is separated from wiring only `AppModule` uses (`http/envelope/`, future `config/`, `logger/`). Modules may import only the first kind (enforced)
+- **Two kinds of code, two folders**: what modules import (`base/`, `http/errors/`) is separated from wiring only `AppModule` uses (`http/envelope/`, `http/validation/`, `config/`, `context/`, `logger/`). Modules may import only the first kind (enforced)
 - A concern folder gets a `<concern>.module.ts` when it registers providers; `AppModule` imports that module and nothing else from it
 - One concept per file, named after it (`http-errors.ts`, `envelope.filter.ts`, `envelope.interceptor.ts`); specs sit next to the file. No `index.ts` barrels: import the file directly with the `@/` alias
-- Add a new concern folder (`app/config/`, `app/logger/`) only when a requirement needs it
+- Add a new concern folder only when a requirement needs it
 
 ## Vertical Structure (Modules)
 
@@ -175,6 +187,40 @@ Every HTTP response uses one of two shapes; clients switch on `ok`:
 - `StreamableFile` responses (downloads) skip the envelope. Handlers using `@Res()` bypass it; avoid `@Res()`
 - Change envelope behavior only in `app/http/envelope/` and cover it with a test in `app.module.spec.ts`
 
+## Configuration (nest-typed-config)
+
+All configuration comes from environment variables, validated once at startup and read through a typed class. Nothing reads `process.env` directly except `config.module.ts`.
+
+- **Library**: `nest-typed-config` (`TypedConfigModule.forRoot` with `dotenvLoader()`), validated with **zod** through its `validate` option, so config follows the same zod convention as DTOs
+- **Schema**: `src/app/config/app-config.ts` declares the env variables and maps them to camelCase fields. `AppConfig` (a `createZodDto` class) is both the type and the injection token: `constructor(private readonly config: AppConfig)`
+- **Fail fast**: invalid or missing config throws at boot and the app does not start. Give a variable a `.default()` only when a safe default exists; secrets and URLs never get defaults
+- **Adding a setting**: add it to `AppConfigSchema` (env name in, camelCase out), add it to `.env.example` with a comment, add a case to `app-config.spec.ts`. Never hard-code a value that could differ per environment
+- `ConfigModule` is global, imported once in `AppModule`. `.env` is git-ignored; `.env.example` is committed
+- **Current variables**: `NODE_ENV` (`development` | `test` | `production`), `PORT` (default 3000), `LOG_LEVEL` (`trace` … `silent`, default `info`)
+- **Modules do not import `app/config`** (enforced by the app allowlist). When a module needs a setting, ask before choosing how to pass it in; do not widen the allowlist on your own
+- Reference: `src/app/config/`
+
+## Logging and Request Context (pino + nestjs-cls)
+
+- **Logger**: `pino` through `nestjs-pino`. Output is JSON (pretty in `NODE_ENV=development`); level from `AppConfig.logLevel`. `main.ts` installs it as the Nest logger (`bufferLogs` + `app.useLogger`), so framework logs use it too
+- **Request context**: `nestjs-cls` opens an async context per HTTP request (`src/app/context/`). Every request gets a **unique UUID, always generated server-side**; a client-supplied `X-Request-Id` is ignored. It is returned in the `X-Request-Id` response header and available via `ClsService.getId()`
+- **`requestId` on every line**: the logger `mixin` adds `requestId` from the context to every log line, including the automatic `request completed` line. Never pass it by hand
+- **Scoped logger**: inject `PinoLogger` and set the class as context, so lines carry `context` and `requestId`:
+
+```ts
+constructor(private readonly logger: PinoLogger) {
+  this.logger.setContext(GreetingService.name)
+}
+// this.logger.info({ orderId }, 'Order paid')
+```
+
+- Log with structured fields first, message second (`logger.info({ orderId }, 'Order paid')`); messages are static text, variable data goes in fields
+- Use `debug` for diagnostics, `info` for business events, `warn` for recoverable oddities, `error` for failures. Do not log expected `Result` errors at `error`
+- **Never log secrets or personal data** (passwords, tokens, full payloads). `authorization`, `cookie`, and `set-cookie` headers are redacted; do not add fields that bypass that
+- `console.*` is banned by lint (`no-console`); use the logger. `domain/` stays pure and does not log; log in `application/`, `infrastructure/`, and `presentation/`
+- Work outside a request (cron, queue consumers) has no request id; wrap it in `PinoLogger.runInContext` to bind fields such as a job id
+- Reference: `src/app/logger/`, `src/app/context/`, and `modules/greeting/application/services/greeting.service.ts`
+
 ## Cross-Context Communication
 
 Need a return value (sync) → **port**; trigger a side effect (async) → **domain event**.
@@ -189,7 +235,7 @@ Need a return value (sync) → **port**; trigger a side effect (async) → **dom
 ## External Side Effects Go Through Ports
 
 - Database, cache, HTTP clients, queues, and file system are accessed via ports declared in `application/ports/` and implemented in `infrastructure/`
-- Services MUST NOT inject concrete clients; they depend on ports
+- Services MUST NOT inject concrete clients; they depend on ports. The one exception is the logger (`PinoLogger`), a cross-cutting concern (see Logging)
 - Controllers return DTOs inside a `Result` (see Error Handling); never leak aggregates
 
 ## shared-kernel Admission

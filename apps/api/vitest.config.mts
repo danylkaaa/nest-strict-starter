@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
+    env: { LOG_LEVEL: 'silent' },
     root: './',
     include: ['src/**/*.spec.ts'],
     coverage: {
