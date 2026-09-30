@@ -1,13 +1,13 @@
-import { Box, Flex } from '@chakra-ui/react';
+import { Box, Stack } from '@chakra-ui/react';
 import { Outlet } from 'react-router';
 
-import { Sidebar } from './sidebar';
+import { TopNav } from './top-nav';
 
 export const Layout = () => (
-  <Flex h="100vh">
-    <Sidebar />
-    <Box as="main" flex="1" overflowY="auto" p="8">
+  <Box bg="gray.50" minH="100vh">
+    <TopNav />
+    <Stack as="main" gap="5" maxW="1200px" mx="auto" px="7" py="6">
       <Outlet />
-    </Box>
-  </Flex>
+    </Stack>
+  </Box>
 );

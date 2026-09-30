@@ -29,7 +29,7 @@ When a change introduces or alters a pattern (error handling, response shape, a 
 ## Layout
 
 - `apps/backend` — NestJS backend with HTTP (`src/api/`), future queue worker (`src/worker/`), business features (`src/modules/`), and shared infrastructure (`src/common/`). Backend ownership and dependencies are defined only in `apps/backend/AGENTS.md`
-- `apps/web` — React + Vite SPA (Chakra UI, TanStack Query, zustand); emails data is simulated until the backend API exists
+- `apps/web` — Job Queue UI: React + Vite SPA (Chakra UI, TanStack Query, zustand, Leaflet), backed by an in-browser mock server until the backend API is ready
 - `packages/database` — shared Drizzle schema, client types, and PostgreSQL migrations
 
 ## Commands

@@ -1,28 +1,42 @@
 import { create } from 'zustand';
 
+import type { SentEmailStatus } from '@/features/jobs/job';
+
 interface EmailsState {
   expandedId: string | null;
   page: number;
+  search: string;
+  status: SentEmailStatus | null;
 }
 
 interface EmailsActions {
-  nextPage: () => void;
-  prevPage: () => void;
-  setExpandedId: (id: string | null) => void;
+  setPage: (page: number) => void;
+  setSearch: (search: string) => void;
+  setStatus: (status: SentEmailStatus | null) => void;
+  toggleExpanded: (id: string) => void;
 }
 
-export const initialEmailsState: EmailsState = { expandedId: null, page: 1 };
+export const initialEmailsState: EmailsState = {
+  expandedId: null,
+  page: 1,
+  search: '',
+  status: null,
+};
 
-// Page bounds are enforced by the UI, which knows totalPages from the query result.
+// Kept outside the page so leaving and returning to Emails restores the same view.
+// Changing the page or a filter collapses the open row; filters also go back to page 1.
 export const useEmailsStore = create<EmailsActions & EmailsState>()((set) => ({
   ...initialEmailsState,
-  nextPage: () => {
-    set((state) => ({ expandedId: null, page: state.page + 1 }));
+  setPage: (page) => {
+    set({ expandedId: null, page });
   },
-  prevPage: () => {
-    set((state) => ({ expandedId: null, page: Math.max(1, state.page - 1) }));
+  setSearch: (search) => {
+    set({ expandedId: null, page: 1, search });
   },
-  setExpandedId: (expandedId) => {
-    set({ expandedId });
+  setStatus: (status) => {
+    set({ expandedId: null, page: 1, status });
+  },
+  toggleExpanded: (id) => {
+    set((state) => ({ expandedId: state.expandedId === id ? null : id }));
   },
 }));
