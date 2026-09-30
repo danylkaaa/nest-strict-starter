@@ -11,11 +11,13 @@ import { ok } from 'neverthrow';
 
 import { Public } from '@/app/http/auth/public.decorator.js';
 import { RequestContext } from '@/app/http/context/request-context.js';
+import { toHttpException } from '@/app/http/errors/to-http-exception.js';
 import { AuthService } from '@/modules/auth/application/services/auth.service.js';
 import { LoginRequestDto } from '@/modules/auth/presentation/dtos/login-request.dto.js';
 import { LoginResponseDto } from '@/modules/auth/presentation/dtos/login-response.dto.js';
 import { MeResponseDto } from '@/modules/auth/presentation/dtos/me-response.dto.js';
 
+import type { HttpExceptionClass } from '@/app/http/errors/to-http-exception.js';
 import type { AuthError } from '@/modules/auth/domain/auth.errors.js';
 import type { TokenIssueError } from '@/shared-kernel/auth/token-issuer.port.js';
 import type { HttpException } from '@nestjs/common';
@@ -23,17 +25,13 @@ import type { Result, ResultAsync } from 'neverthrow';
 
 type LoginError = AuthError | TokenIssueError;
 
-// One explicit status per domain error; a new error will not compile until it is listed here.
-const HTTP_EXCEPTION_FOR: Record<LoginError['name'], (error: LoginError) => HttpException> = {
-  InvalidCredentialsError: (error) =>
-    new UnauthorizedException({ code: error.name, message: error.message }),
-  PasswordVerificationError: (error) =>
-    new InternalServerErrorException({ code: error.name, message: error.message }),
-  TokenIssueError: (error) =>
-    new InternalServerErrorException({ code: error.name, message: error.message }),
-  UserLookupError: (error) =>
-    new InternalServerErrorException({ code: error.name, message: error.message }),
-};
+// One explicit exception class per domain error; a new error will not compile until it is listed here.
+const HTTP_EXCEPTION_FOR = {
+  InvalidCredentialsError: UnauthorizedException,
+  PasswordVerificationError: InternalServerErrorException,
+  TokenIssueError: InternalServerErrorException,
+  UserLookupError: InternalServerErrorException,
+} satisfies Record<LoginError['name'], HttpExceptionClass>;
 
 @Controller('auth')
 export class AuthController {
@@ -51,7 +49,7 @@ export class AuthController {
       .map(({ accessToken, expiresIn }) =>
         LoginResponseDto.create({ accessToken, expiresIn, tokenType: 'Bearer' }),
       )
-      .mapErr((error) => HTTP_EXCEPTION_FOR[error.name](error));
+      .mapErr((error) => toHttpException(error, HTTP_EXCEPTION_FOR));
   }
 
   @Get('me')

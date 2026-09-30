@@ -6,26 +6,27 @@ NestJS API using DDD-style modules. Read the whole file before writing code here
 
 Where each pattern lives in code. Copy the reference implementation instead of inventing a variant.
 
-| Pattern                                                | Reference implementation                                                          | Section                           |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------- | --------------------------------- |
-| Module layout, layers                                  | `src/modules/greeting/`                                                           | Directory Layout                  |
-| Boundary rules                                         | `.dependency-cruiser.mjs`                                                         | Dependency Direction              |
-| Domain error classes                                   | `greeting/domain/greeting.errors.ts`, `src/app/base/domain-error.ts`              | Error Handling                    |
-| Result-returning domain logic                          | `greeting/domain/greeting.ts`                                                     | Error Handling                    |
-| HTTP errors (Nest built-in exceptions)                 | `@nestjs/common` exceptions, `auth/presentation/auth.controller.ts`               | Error Handling                    |
-| Domain error → exception, `Result<Dto, HttpException>` | `greeting/presentation/greeting.controller.ts`                                    | Error Handling                    |
-| Zod request/response DTOs                              | `greeting/presentation/dtos/`                                                     | DTOs (zod + nestjs-zod)           |
-| Global validation pipe                                 | `src/app/http/validation/validation.module.ts`                                    | DTOs (zod + nestjs-zod)           |
-| Typed env config (zod)                                 | `src/app/config/`                                                                 | Configuration (nest-typed-config) |
-| Request id + async context                             | `src/app/context/request-context.module.ts`                                       | Logging and Request Context       |
-| Pino logger config                                     | `src/app/logger/logger.config.ts`                                                 | Logging and Request Context       |
-| Scoped logger in a service                             | `greeting/application/services/greeting.service.ts`                               | Logging and Request Context       |
-| Auth: global JWT guard, `@Public()`, `RequestContext`  | `src/app/auth/jwt-auth.guard.ts`, `src/app/http/auth/`, `src/app/http/context/`   | Authentication                    |
-| Token-issuer port (contract) + adapter                 | `src/shared-kernel/auth/token-issuer.port.ts`, `src/app/auth/jwt-token-issuer.ts` | Authentication                    |
-| Auth module (login, me)                                | `src/modules/auth/`                                                               | Authentication                    |
-| Response envelope                                      | `src/app/http/envelope/`                                                          | Response Envelope                 |
-| Envelope integration test                              | `src/app.module.spec.ts`                                                          | Response Envelope                 |
-| Lint exceptions for Nest                               | `oxlint.config.ts`                                                                | Nest-Specific Lint Notes          |
+| Pattern                                                | Reference implementation                                                           | Section                           |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------- |
+| Module layout, layers                                  | `src/modules/greeting/`                                                            | Directory Layout                  |
+| Boundary rules                                         | `.dependency-cruiser.mjs`                                                          | Dependency Direction              |
+| Domain error classes                                   | `greeting/domain/greeting.errors.ts`, `src/app/base/domain-error.ts`               | Error Handling                    |
+| Result-returning domain logic                          | `greeting/domain/greeting.ts`                                                      | Error Handling                    |
+| HTTP errors (Nest built-in exceptions)                 | `@nestjs/common` exceptions, `auth/presentation/auth.controller.ts`                | Error Handling                    |
+| Domain error → exception, `Result<Dto, HttpException>` | `greeting/presentation/greeting.controller.ts`                                     | Error Handling                    |
+| Domain error → exception map (`HTTP_EXCEPTION_FOR`)    | `auth/presentation/auth.controller.ts`, `src/app/http/errors/to-http-exception.ts` | Error Handling                    |
+| Zod request/response DTOs                              | `greeting/presentation/dtos/`                                                      | DTOs (zod + nestjs-zod)           |
+| Global validation pipe                                 | `src/app/http/validation/validation.module.ts`                                     | DTOs (zod + nestjs-zod)           |
+| Typed env config (zod)                                 | `src/app/config/`                                                                  | Configuration (nest-typed-config) |
+| Request id + async context                             | `src/app/context/request-context.module.ts`                                        | Logging and Request Context       |
+| Pino logger config                                     | `src/app/logger/logger.config.ts`                                                  | Logging and Request Context       |
+| Scoped logger in a service                             | `greeting/application/services/greeting.service.ts`                                | Logging and Request Context       |
+| Auth: global JWT guard, `@Public()`, `RequestContext`  | `src/app/auth/jwt-auth.guard.ts`, `src/app/http/auth/`, `src/app/http/context/`    | Authentication                    |
+| Token-issuer port (contract) + adapter                 | `src/shared-kernel/auth/token-issuer.port.ts`, `src/app/auth/jwt-token-issuer.ts`  | Authentication                    |
+| Auth module (login, me)                                | `src/modules/auth/`                                                                | Authentication                    |
+| Response envelope                                      | `src/app/http/envelope/`                                                           | Response Envelope                 |
+| Envelope integration test                              | `src/app.module.spec.ts`                                                           | Response Envelope                 |
+| Lint exceptions for Nest                               | `oxlint.config.ts`                                                                 | Nest-Specific Lint Notes          |
 
 Rules marked **[enforced]** are checked by `pnpm --filter api deps` (dependency-cruiser, `apps/api/.dependency-cruiser.mjs`) or oxlint. Rules marked **[convention]** are not machine-checked; follow them anyway.
 
@@ -71,11 +72,13 @@ app/
     │   └── public.decorator.ts
     ├── context/             # RequestContext: the one global per-request context (imported by presentation/)
     │   └── request-context.ts
+    ├── errors/              # toHttpException: domain error → HttpException (imported by presentation/)
+    │   └── to-http-exception.ts
     ├── envelope/            # Response envelope: types, interceptor, filter, module (wiring only)
     └── validation/          # Global ZodValidationPipe module (wiring only)
 ```
 
-- **Two kinds of code, two folders**: what modules import (`base/`, `http/auth/`, `http/context/`) is separated from wiring only `AppModule` uses (`auth/`, `http/envelope/`, `http/validation/`, `config/`, `context/`, `logger/`). Modules may import only the first kind (enforced)
+- **Two kinds of code, two folders**: what modules import (`base/`, `http/auth/`, `http/context/`, `http/errors/`) is separated from wiring only `AppModule` uses (`auth/`, `http/envelope/`, `http/validation/`, `config/`, `context/`, `logger/`). Modules may import only the first kind (enforced)
 - A concern folder gets a `<concern>.module.ts` when it registers providers; `AppModule` imports that module and nothing else from it
 - **[convention]** App-wide operational endpoints live in a small module under `modules/<concern>/`; `modules/health/` is the reference. This keeps each endpoint's controller and DTO together while preserving the `Result` and response envelope rules
 - One concept per file, named after it (`domain-error.ts`, `envelope.filter.ts`, `envelope.interceptor.ts`); specs sit next to the file. No `index.ts` barrels: import the file directly with the `@/` alias
@@ -106,7 +109,7 @@ When stuck: about to put a file in a folder named after a technical role at the 
 - **[enforced]** `domain/` MUST NOT import npm packages (no `@nestjs/*`, ORMs, loggers, crypto libs). Exempt: test files and `neverthrow`
 - **[enforced]** `presentation/` MUST NOT import database packages (`@workspace/database`, `drizzle-orm`, `pg`, `postgres`); go through application services
 - **[enforced]** `application/services/` MUST NOT runtime-import `@workspace/database`; type-only imports are allowed
-- **[enforced]** `modules/` MAY import only `app/base/`, `app/http/auth/`, and `app/http/context/`; all other `app/` code, including `app/http/envelope/`, is wiring (`modules-app-allowlist`)
+- **[enforced]** `modules/` MAY import only `app/base/`, `app/http/auth/`, `app/http/context/`, and `app/http/errors/`; all other `app/` code, including `app/http/envelope/`, is wiring (`modules-app-allowlist`)
 - **[enforced]** `modules/` MUST NOT import `nestjs-cls`; controllers read request data through `app/http/context/RequestContext` (`modules-no-cls`)
 - **[enforced]** `modules/` MUST NOT import `@nestjs/jwt`; tokens are issued through the `TOKEN_ISSUER` port (`modules-no-jwt`)
 - **[enforced]** `domain/`, `application/`, `infrastructure/` MUST NOT import `presentation/` (`no-outward-presentation-import`)
@@ -163,13 +166,13 @@ Expected failures are values, not exceptions: `Result` / `ResultAsync` from `nev
 **HTTP errors**
 
 - Use the built-in exceptions from `@nestjs/common`: `BadRequestException` (400), `UnauthorizedException` (401), `ForbiddenException` (403), `NotFoundException` (404), `ConflictException` (409), `UnprocessableEntityException` (422), `InternalServerErrorException` (500). We define no HTTP error classes of our own
-- **`{ code, message }` convention**: for a mapped domain error pass an object response, `new BadRequestException({ code: error.name, message: error.message })`. The envelope uses a string `code` from an object response as the envelope `code`; without one it falls back to the status name (`NOT_FOUND`, ...). Keeping domain error names as envelope codes was an explicit user decision
+- **`{ code, message }` convention**: every controller builds the exception for a mapped domain error with the shared `toHttpException(error, HTTP_EXCEPTION_FOR)` (`src/app/http/errors/to-http-exception.ts`), which looks the exception class up by `error.name` in the controller's `HTTP_EXCEPTION_FOR` map and returns `new HTTP_EXCEPTION_FOR[error.name]({ code: error.name, message: error.message })`. Never hand-build the `{ code, message }` object in a controller. The envelope uses a string `code` from an object response as the envelope `code`; without one it falls back to the status name (`NOT_FOUND`, ...). Keeping domain error names as envelope codes was an explicit user decision
 - Only `presentation/` and `app/` create HTTP exceptions (enforced for `domain/`, `application/`, `infrastructure/` by oxlint `no-restricted-imports`)
 
 **Controllers**
 
 - Every controller handler takes zod DTOs for its inputs and returns `Result<XxxResponseDto, HttpException>` (or `ResultAsync<Dto, HttpException>`; `HttpException` from `@nestjs/common`). It never returns a bare value and never throws for an expected failure
-- **[convention]** The controller chooses the HTTP status in `.mapErr(...)` and passes the domain error's `name` and `message` as a `{ code, message }` object, for example `new BadRequestException({ code: error.name, message: error.message })`. The message stays friendly and the envelope code identifies the domain failure. Keep a `Record<Error['name'], ...>` map when a context has several errors (see `auth/presentation/auth.controller.ts`). When a context gains errors requiring different statuses, select the status for each error explicitly
+- **[convention]** The controller chooses the HTTP status per domain error in its `HTTP_EXCEPTION_FOR` map and builds the exception in `.mapErr(...)` with `toHttpException(error, HTTP_EXCEPTION_FOR)`. The message stays friendly and the envelope code identifies the domain failure. **Every controller maps domain errors through the shared utility.** Every controller declares a module-level `HTTP_EXCEPTION_FOR = { XxxError: SomeException, ... } satisfies Record<XxxError['name'], HttpExceptionClass>` map (one entry for a single-error context) and passes the whole map: `toHttpException(error, HTTP_EXCEPTION_FOR)`; the lookup by name happens inside the utility, never at the call site. The utility's signature is `<E extends DomainError>(error: E, exceptionFor: Record<E['name'], HttpExceptionClass>)`, so a new error in the union fails to compile until it is listed (reference: `auth/presentation/auth.controller.ts`). The boundary is enforced by `modules-app-allowlist`.
 - Reference: `modules/greeting/presentation/greeting.controller.ts`
 
 **Everywhere else**

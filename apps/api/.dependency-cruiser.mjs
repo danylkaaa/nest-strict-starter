@@ -40,11 +40,11 @@ export default {
     },
     {
       comment:
-        'Modules may only use app/base (base classes) and app/http/auth (auth decorators) and app/http/context (RequestContext); the http ones are presentation only. Other app/ code, including app/http/envelope, is wiring.',
+        'Modules may only use app/base (base classes) and app/http/auth (auth decorators), app/http/context (RequestContext) and app/http/errors (toHttpException); the http ones are presentation only. Other app/ code, including app/http/envelope, is wiring.',
       from: { path: '^src/modules/' },
       name: 'modules-app-allowlist',
       severity: 'error',
-      to: { path: '^src/app/', pathNot: '^src/app/(base|http/auth|http/context)/' },
+      to: { path: '^src/app/', pathNot: '^src/app/(base|http/auth|http/context|http/errors)/' },
     },
     {
       comment:
