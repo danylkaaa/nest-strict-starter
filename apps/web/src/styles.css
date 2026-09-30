@@ -1,0 +1,15 @@
+/* Leaflet tooltips styled like the design's dark hover cards */
+.leaflet-tooltip {
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #fff;
+  background: #1a202c;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+}
+
+.leaflet-tooltip-top::before {
+  border-top-color: #1a202c;
+}

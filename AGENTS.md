@@ -4,7 +4,7 @@ pnpm + turbo monorepo with a NestJS backend. Strict lint and format checks are p
 
 Context lives in `AGENTS.md` files (this one at the root, one per package). Claude Code and other agents read them directly; do not add `CLAUDE.md` files.
 
-- Before working in a package, read its `AGENTS.md`: `apps/backend/AGENTS.md`, `packages/database/AGENTS.md`
+- Before working in a package, read its `AGENTS.md`: `apps/backend/AGENTS.md`, `apps/web/AGENTS.md`, `packages/database/AGENTS.md`
 - Tooling config rules load from `.claude/rules/tooling.md` via `paths:` matching
 
 ## Persisting Instructions
@@ -29,6 +29,7 @@ When a change introduces or alters a pattern (error handling, response shape, a 
 ## Layout
 
 - `apps/backend` — NestJS backend with HTTP (`src/api/`), future queue worker (`src/worker/`), business features (`src/modules/`), and shared infrastructure (`src/common/`). Backend ownership and dependencies are defined only in `apps/backend/AGENTS.md`
+- `apps/web` — Job Queue UI: React + Vite SPA (Chakra UI, TanStack Query, zustand, Leaflet), backed by an in-browser mock server until the backend API is ready
 - `packages/database` — shared Drizzle schema, client types, and PostgreSQL migrations
 
 ## Commands
