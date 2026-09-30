@@ -14,9 +14,9 @@
 
 ## Webhook simulation
 
-**Approach chosen:** A webhook use case calls a replaceable mock client with a URL and JSON payload. The client waits 1–2 seconds, then returns a receipt of a stable shape on success, with its values derived from the job's delivery key so a repeated call returns the same receipt, or a feature-owned `WebhookDeliveryFailedError` in a `Result` on 10% of calls. It makes no network request.
+**Approach chosen:** A webhook use case calls a replaceable mock client with a URL and JSON payload. The client waits 1–2 seconds, then returns a receipt of a stable shape on success, with its values derived from the job's delivery key so a repeated call returns the same receipt, or a feature-owned `WebhookDeliveryFailedError` in a `Result` on one in three calls (raised from the original 10% so retries show up often in the UI). It makes no network request.
 
-**Why:** The module can be called by a future worker, while the expected simulated failure remains separate from defects and can later drive retry behavior. The user's 10% failure requirement supersedes the 20% in `docs/task.md`.
+**Why:** The module can be called by a future worker, while the expected simulated failure remains separate from defects and can later drive retry behavior. The user's original 10% failure requirement superseded the 20% in `docs/task.md`; the rate was later raised to one in three.
 
 **Trade-offs:** Outcomes are intentionally random, and the module does not yet expose an HTTP endpoint or decide retries. The first worker integration will need to map the error to job retry and failure states.
 
@@ -158,7 +158,7 @@
 
 **Retry semantics:** pg-boss `retry` on a failed job sets its state to `retry`, raises `retry_limit` by one, and keeps `retry_count`, so exactly one more attempt becomes possible, numbered `retry_count + 2`. The repository therefore raises `max_attempts` by one, sets the status to `pending`, pulls the queue job's `start_after` to now (a dead-lettered job would otherwise wait out its retry delay), and appends a `retried:<n>` activity event, all in one transaction that locks the `jobs` row and the pg-boss row first, like cancellation. Two simultaneous retries grant one attempt (the loser sees a non-failed job and gets 409), and a worker pickup cannot interleave. `failed` events are now keyed `failed:<attempt>` so a retried job that fails terminally again records a second `failed` event. Known limitation: a job dead-lettered early (for example an invalid payload at attempt 1 of 4) and retried gets `max_attempts + 1`, so it has more than one attempt left; the plan says to bump by one, and the case is a dead end for input errors anyway.
 
-**Mock failures:** The webhook client fails on a 10% random roll for every URL, including those ending in `/503`; URL text never forces an outcome. The mock email client still always fails a recipient ending in `@bounce.test` (case-insensitive), while other recipients keep the 10% random failure. The URL and recipient stay out of errors and logs. The email shortcut lets the UI show retries on demand; webhook retries depend on the random roll.
+**Mock failures:** The webhook client fails on a one-in-three random roll for every URL, including those ending in `/503`; URL text never forces an outcome. The mock email client still always fails a recipient ending in `@bounce.test` (case-insensitive), while other recipients keep the 10% random failure. The URL and recipient stay out of errors and logs. The email shortcut lets the UI show retries on demand; webhook retries depend on the random roll.
 
 **Conflict details:** A repeated submission key stays HTTP 409 and now carries `error.details.existingJobId` so the UI can link to the existing job. The error envelope gained an optional `details` object for structured, non-sensitive facts.
 
