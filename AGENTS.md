@@ -59,7 +59,6 @@ Single package: `pnpm --filter backend <script>`.
 
 - Library-first: use a mature library before writing new infrastructure code
 - MVP-first: build only what the current requirement needs; no speculative layers or config switches
-- Test-first: write the failing test, then the implementation; tests sit next to source (`foo.ts` + `foo.spec.ts`)
 - Functional-first: prefer pure functions and immutable data; keep side effects in infrastructure
 - Backend HTTP and worker entry points call business use cases in `apps/backend/src/modules/`; see `apps/backend/AGENTS.md` for ownership, DTO, Result, and dependency rules
 

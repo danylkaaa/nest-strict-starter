@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
 
 import { ApiConfig } from '@/api/core/config/api.config';
+import { setupSwagger } from '@/api/core/swagger/swagger.config.js';
 
 import { AppModule } from './api.module.js';
 import { formatStartupBanner } from './core/logger/startup-banner.js';
@@ -15,6 +16,7 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
   app.setGlobalPrefix('api');
+  setupSwagger(app);
 
   const {
     NODE_ENV,

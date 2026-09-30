@@ -2,19 +2,19 @@ import { sql } from 'drizzle-orm';
 import { check, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { ulid } from 'ulid';
 
-export const users = pgTable(
-  'users',
+export const sentEmails = pgTable(
+  'sent_emails',
   {
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    email: text('email').notNull().unique(),
+    body: text('body').notNull(),
     id: text('id')
       .primaryKey()
-      .$defaultFn(() => `usr_${ulid()}`),
-    passwordHash: text('password_hash').notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .defaultNow()
-      .notNull()
-      .$onUpdate(() => new Date()),
+      .$defaultFn(() => `eml_${ulid()}`),
+    messageId: text('message_id').notNull().unique(),
+    recipient: text('recipient').notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull(),
+    subject: text('subject').notNull(),
   },
-  (table) => [check('users_id_format', sql`${table.id} ~ '^usr_[0-7][0-9A-HJKMNP-TV-Z]{25}$'`)],
+  (table) => [
+    check('sent_emails_id_format', sql`${table.id} ~ '^eml_[0-7][0-9A-HJKMNP-TV-Z]{25}$'`),
+  ],
 );

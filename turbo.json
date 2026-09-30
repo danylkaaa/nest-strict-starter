@@ -45,11 +45,6 @@
     "db:migrate": {
       "cache": false,
       "env": ["DATABASE_URL"]
-    },
-    "db:seed": {
-      "cache": false,
-      "dependsOn": ["build"],
-      "env": ["DATABASE_URL"]
     }
   }
 }

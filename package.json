@@ -16,8 +16,7 @@
     "prepare": "husky",
     "commitlint": "commitlint",
     "db:generate": "turbo run db:generate",
-    "db:migrate": "turbo run db:migrate",
-    "db:seed": "turbo run db:seed --filter=@workspace/database"
+    "db:migrate": "turbo run db:migrate"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",

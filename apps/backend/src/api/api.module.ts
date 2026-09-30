@@ -8,6 +8,7 @@ import { ValidationModule } from '@/api/core/validation/validation.module.js';
 import { DatabaseModule } from '@/common/database/database.module';
 
 import { EnvelopeModule } from './core/response-envelope/envelope.module.js';
+import { EmailsApiModule } from './endpoints/emails/emails.module.js';
 import { GreetingApiModule } from './endpoints/greeting/greeting.module.js';
 
 @Module({
@@ -24,6 +25,7 @@ import { GreetingApiModule } from './endpoints/greeting/greeting.module.js';
     ValidationModule,
     // endpoints
     GreetingApiModule,
+    EmailsApiModule,
   ],
 })
 export class AppModule {}
