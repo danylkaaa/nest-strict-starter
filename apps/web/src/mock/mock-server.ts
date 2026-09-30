@@ -38,7 +38,12 @@ const TAXI_AND_CLIMB_MINUTES = 30;
 const PATH_SEGMENTS = 32;
 
 /** Exponential backoff: 5s, 15s, 45s, ... */
-export const backoffMs = (attempt: number): number => 5000 * 3 ** (attempt - 1);
+// Same schedule as the backend: 5 s, 10 s, then 30 s for every later retry
+const BACKOFF_SCHEDULE_MS = [5000, 10_000, 30_000] as const;
+const MAX_BACKOFF_MS = 30_000;
+
+export const backoffMs = (attempt: number): number =>
+  BACKOFF_SCHEDULE_MS[attempt - 1] ?? MAX_BACKOFF_MS;
 
 const DURATION_MS: Record<Exclude<Job['type'], 'batch'>, [number, number]> = {
   email: [1000, 3000],

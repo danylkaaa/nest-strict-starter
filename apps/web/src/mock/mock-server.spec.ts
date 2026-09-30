@@ -153,7 +153,7 @@ describe('mock server', () => {
       expect(failed.error).toContain('503');
       expect(failed.attemptHistory.map((attempt) => attempt.next)).toEqual([
         'retry in 5s',
-        'retry in 15s',
+        'retry in 10s',
         'gave up',
       ]);
     });
@@ -309,6 +309,6 @@ describe('mock server', () => {
 
 describe('backoffMs', () => {
   it('triples from 5 seconds', () => {
-    expect([1, 2, 3].map(backoffMs)).toEqual([5000, 15_000, 45_000]);
+    expect([1, 2, 3, 4].map(backoffMs)).toEqual([5000, 10_000, 30_000, 30_000]);
   });
 });
