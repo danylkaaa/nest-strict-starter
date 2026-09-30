@@ -7,6 +7,7 @@ import { JobService } from './job.service.js';
 import { JOB_REPOSITORY } from './ports/job.repository.js';
 import { CancelJobUseCase } from './use-case/cancel-job.use-case.js';
 import { CompleteJobUseCase } from './use-case/complete-job.use-case.js';
+import { CountJobsByStatusUseCase } from './use-case/count-jobs-by-status.use-case.js';
 import { CreateAircraftReportJobUseCase } from './use-case/create-aircraft-report-job.use-case.js';
 import { CreateEmailJobUseCase } from './use-case/create-email-job.use-case.js';
 import { CreateWebhookJobUseCase } from './use-case/create-webhook-job.use-case.js';
@@ -20,6 +21,7 @@ import { StartJobAttemptUseCase } from './use-case/start-job-attempt.use-case.js
 
 @Module({
   exports: [
+    CountJobsByStatusUseCase,
     CreateEmailJobUseCase,
     CreateWebhookJobUseCase,
     CreateAircraftReportJobUseCase,
@@ -36,6 +38,7 @@ import { StartJobAttemptUseCase } from './use-case/start-job-attempt.use-case.js
   imports: [AircraftTransitsModule],
   providers: [
     JobService,
+    CountJobsByStatusUseCase,
     CreateEmailJobUseCase,
     CreateWebhookJobUseCase,
     CreateAircraftReportJobUseCase,

@@ -18,6 +18,33 @@ pnpm run dev
 
 The API enqueues jobs; the two dev workers deliver them (`pnpm --filter backend worker:dev` starts one extra). For a production build, run `pnpm build` and then `pnpm --filter backend worker:start` in the worker process.
 
+## Run tests
+
+Run these commands from the repository root.
+
+### Unit tests
+
+```bash
+pnpm test                         # all packages
+pnpm --filter backend test        # backend only
+pnpm --filter web test            # web only
+pnpm --filter backend test:watch  # rerun backend tests while editing
+```
+
+The normal `test` scripts run `*.spec.ts` files. `pnpm check` also runs unit tests alongside type checking, linting, formatting, and dependency checks; it does not run E2E tests.
+
+### E2E and database integration tests
+
+1. Run `pnpm run setup` to start PostgreSQL and apply the Drizzle and queue migrations.
+2. Run `pnpm db:seed` to load the airport and aircraft data used by the integration suite.
+3. Stop `pnpm dev` or any other worker using this database, then run:
+
+```bash
+DATABASE_URL="$(sed -n 's/^DATABASE_URL=//p' .env)" pnpm --filter backend test:integration
+```
+
+The integration command runs the backend's `*.e2e-spec.ts` files against the database named in the root `.env`. It runs separately from `pnpm test`; keep other workers stopped so they do not consume jobs created by the suite.
+
 ## Submit an email job
 
 ```bash
@@ -50,12 +77,13 @@ curl -X POST http://localhost:3000/api/jobs/aircraft-report \
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/jobs`                         | Paged list, newest first. Query: `queue`, `status` (comma-separated), `search` (job ID or payload text, case-insensitive), `page` (default 1), `pageSize` (1-100, default 10). Returns `{ items, page, pageSize, total, totalPages }`; a scheduled job whose start has passed is listed as `pending`. |
 | `GET /api/jobs/stats`                   | `{ counts, healthy }`: a count for each of the six statuses, and whether the database and queue answer.                                                                                                                                                                                               |
+| `GET /api/health`                       | `{ status: 'ok' \| 'down', checks: { database, queue }, counts }`: each check is `up` or `down` (2 second timeout), `counts` has the six job statuses (zeros while the database is down). HTTP 200 when ok; HTTP 503 when down, with the same report in `error.details`.                              |
 | `GET /api/jobs/:id`                     | One job with its `payload`, `maxAttempts`, `attempts`, `lastErrorCategory`, `completedAt`, and ordered `activity`.                                                                                                                                                                                    |
 | `POST /api/jobs/:id/retry`              | Grants a failed job one more attempt (HTTP 404 unknown, 409 if not failed).                                                                                                                                                                                                                           |
 | `DELETE /api/jobs/:id`                  | Cancels a pending or scheduled job.                                                                                                                                                                                                                                                                   |
 | `GET /api/aircraft-transit-reports/:id` | The generated report (`reportId` in an aircraft report job's `result`) with its waypoints.                                                                                                                                                                                                            |
 
-Every submission accepts an optional `maxAttempts` (1-10, default 4); a webhook `payload` accepts an optional `method` (`POST` or `PUT`, default `POST`, stored but not sent by the mock). A repeated `idempotencyKey` returns HTTP 409 with `error.details.existingJobId`. To demo retries, use a webhook URL ending in `/503` or an email recipient ending in `@bounce.test`: the mock clients always fail those.
+Every submission accepts an optional `maxAttempts` (1-10, default 4); a webhook `payload` accepts an optional `method` (`POST` or `PUT`, default `POST`, stored but not sent by the mock). A repeated `idempotencyKey` returns HTTP 409 with `error.details.existingJobId`. Mock webhook delivery fails randomly on 10% of attempts, regardless of URL. To demo email retries, use a recipient ending in `@bounce.test`: the mock email client always fails those.
 
 ## API Doc
 
