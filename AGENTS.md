@@ -22,6 +22,10 @@ The repo is the memory: the next session only knows what is written here.
 
 When a change introduces or alters a pattern (error handling, response shape, a new layer, a boundary rule), update that package's `AGENTS.md` in the same commit: the rule, why it exists, and where the reference implementation lives. Root `AGENTS.md` holds only cross-package rules. A pattern documented nowhere will be reinvented differently by the next agent.
 
+## Design Decisions
+
+`DECISIONS.md` at the repo root records every design decision: the approach chosen, why, and the trade-offs, including options that were rejected and items still to verify. When a change makes, alters, or confirms a design decision (for example, resolving a **(verify)** item), update `DECISIONS.md` in the same commit. Why: it is a submission deliverable, and it is the only record of _why_ the system works the way it does. Code and `AGENTS.md` record _what_ the patterns are. Testable requirements live in `goals/<name>/facts.md`; keep the two consistent. Not machine-enforced; the reviewer agent checks it.
+
 ## Layout
 
 - `apps/api` — NestJS API (DDD-style modules)
