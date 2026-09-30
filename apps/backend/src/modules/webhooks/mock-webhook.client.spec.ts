@@ -40,8 +40,8 @@ describe('mock webhook client', () => {
     expect(JSON.stringify(result)).not.toContain('payload-value');
   });
 
-  it('always fails a URL ending in /503 without exposing it, whatever the roll', async () => {
-    stubFailureRoll(1);
+  it('fails a URL ending in /503 when the 10% roll hits without exposing it', async () => {
+    stubFailureRoll(0);
     const result = await new MockWebhookClient().call({
       ...input,
       url: 'https://example.com/private/503',
@@ -50,11 +50,11 @@ describe('mock webhook client', () => {
     expect(JSON.stringify(result)).not.toContain('private');
   });
 
-  it('does not treat /503 elsewhere in the URL as a demo failure', async () => {
+  it('succeeds for a URL ending in /503 when the 10% roll misses', async () => {
     stubFailureRoll(1);
     const result = await new MockWebhookClient().call({
       ...input,
-      url: 'https://example.com/503/hook',
+      url: 'https://example.com/private/503',
     });
     expect(result.isOk()).toBe(true);
   });

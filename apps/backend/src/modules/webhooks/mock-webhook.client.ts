@@ -15,8 +15,7 @@ export class MockWebhookClient implements WebhookClient {
   async call(input: CallWebhookInput): Promise<Result<WebhookReceipt, WebhookDeliveryFailedError>> {
     await setTimeout(randomInt(1000, 2001));
 
-    // Demo hook: a URL ending in /503 always fails so retries can be shown on demand.
-    if (input.url.endsWith('/503') || randomInt(0, 10) === 0) {
+    if (randomInt(0, 10) === 0) {
       return err(new WebhookDeliveryFailedError());
     }
 
