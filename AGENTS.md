@@ -4,7 +4,7 @@ pnpm + turbo monorepo with a NestJS API. Strict lint, format, and module-boundar
 
 Context lives in `AGENTS.md` files (this one at the root, one per package). Claude Code and other agents read them directly; do not add `CLAUDE.md` files.
 
-- Before working in a package, read its `AGENTS.md`: `apps/api/AGENTS.md`
+- Before working in a package, read its `AGENTS.md`: `apps/api/AGENTS.md`, `packages/database/AGENTS.md`
 - Tooling config rules load from `.claude/rules/tooling.md` via `paths:` matching
 
 ## Persisting Instructions
@@ -25,7 +25,7 @@ When a change introduces or alters a pattern (error handling, response shape, a 
 ## Layout
 
 - `apps/api` — NestJS API (DDD-style modules)
-- `packages/*` — shared libraries (none yet)
+- `packages/database` — shared Drizzle schema, client types, and PostgreSQL migrations
 
 ## Commands
 

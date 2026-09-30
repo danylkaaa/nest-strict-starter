@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
+import { ClsPluginTransactional } from '@nestjs-cls/transactional';
+import { TransactionalAdapterDrizzleOrm } from '@nestjs-cls/transactional-adapter-drizzle-orm';
 import { Global, Module } from '@nestjs/common';
+import { getDrizzleToken } from '@nestjs/drizzle';
 import { ClsModule } from 'nestjs-cls';
 
+import { DatabaseModule } from '@/app/database/database.module.js';
 import { RequestContext } from '@/app/http/context/request-context.js';
 
 export const REQUEST_ID_HEADER = 'X-Request-Id';
@@ -28,6 +32,12 @@ export const REQUEST_ID_HEADER = 'X-Request-Id';
           res.setHeader(REQUEST_ID_HEADER, cls.getId());
         },
       },
+      plugins: [
+        new ClsPluginTransactional({
+          adapter: new TransactionalAdapterDrizzleOrm({ drizzleInstanceToken: getDrizzleToken() }),
+          imports: [DatabaseModule],
+        }),
+      ],
     }),
   ],
   providers: [RequestContext],

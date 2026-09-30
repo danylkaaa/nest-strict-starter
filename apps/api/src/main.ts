@@ -13,6 +13,7 @@ async function bootstrap() {
   const logger = app.get(Logger);
   app.useLogger(logger);
 
+  app.enableShutdownHooks();
   app.setGlobalPrefix('api');
 
   const { NODE_ENV, PORT } = app.get(AppConfig);

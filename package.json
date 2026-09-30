@@ -14,7 +14,10 @@
     "deps": "turbo run deps",
     "check": "turbo run typecheck lint format:check deps test",
     "prepare": "husky",
-    "commitlint": "commitlint"
+    "commitlint": "commitlint",
+    "db:generate": "turbo run db:generate",
+    "db:migrate": "turbo run db:migrate",
+    "db:seed": "turbo run db:seed --filter=@workspace/database"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",
