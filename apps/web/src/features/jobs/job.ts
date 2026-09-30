@@ -181,7 +181,6 @@ export interface ListJobsQuery {
 export interface QueueHealth {
   counts: Record<JobStatus, number>;
   healthy: boolean;
-  workers: { busy: number; total: number };
 }
 
 export type SentEmailStatus = 'failed' | 'sent';

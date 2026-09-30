@@ -102,9 +102,10 @@ export const apiJobPageSchema = z.object({
   totalPages: z.number().int(),
 });
 
-export const apiStatsSchema = z.object({
+export const apiHealthSchema = z.object({
+  checks: z.object({ database: z.enum(['up', 'down']), queue: z.enum(['up', 'down']) }),
   counts: z.record(statusSchema, z.number().int()),
-  healthy: z.boolean(),
+  status: z.enum(['ok', 'down']),
 });
 
 export const apiCancelledJobSchema = z.object({ id: z.string(), status: z.literal('cancelled') });

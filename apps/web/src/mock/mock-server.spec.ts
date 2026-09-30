@@ -122,10 +122,7 @@ describe('mock server', () => {
 
       advance(1000);
 
-      expect(server.getHealth()).toMatchObject({
-        counts: { pending: 2, processing: 3 },
-        workers: { busy: 3, total: 3 },
-      });
+      expect(server.getHealth()).toMatchObject({ counts: { pending: 2, processing: 3 } });
     });
   });
 

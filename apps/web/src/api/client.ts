@@ -9,9 +9,9 @@ import {
   apiAirportsSchema,
   apiCancelledJobSchema,
   apiCreatedJobSchema,
+  apiHealthSchema,
   apiJobDetailSchema,
   apiJobPageSchema,
-  apiStatsSchema,
   apiTransitReportSchema,
 } from './schemas';
 
@@ -303,14 +303,21 @@ const listWebhooks = async (query: ListWebhooksQuery): Promise<Page<SentWebhook>
   return { ...result, items };
 };
 
+// An unreachable API or a 503 is an answer for the health card ("not healthy"), not a load error
+const UNHEALTHY_CODES = new Set(['NETWORK_ERROR', 'SERVICE_UNAVAILABLE']);
+
 const getHealth = async (): Promise<QueueHealth> => {
-  const [stats, batches] = await Promise.all([
-    request(apiStatsSchema, '/jobs/stats'),
-    Promise.resolve(mockServer.getHealth()),
-  ]);
-  const counts = { ...batches.counts };
-  for (const status of JOB_STATUSES) counts[status] += stats.counts[status] ?? 0;
-  return { counts, healthy: stats.healthy && batches.healthy, workers: batches.workers };
+  const batches = mockServer.getHealth();
+  try {
+    const health = await request(apiHealthSchema, '/health');
+    const counts = { ...batches.counts };
+    for (const status of JOB_STATUSES) counts[status] += health.counts[status] ?? 0;
+    return { counts, healthy: health.status === 'ok' && batches.healthy };
+  } catch (error) {
+    if (error instanceof ApiError && UNHEALTHY_CODES.has(error.code))
+      return { counts: batches.counts, healthy: false };
+    throw error;
+  }
 };
 
 export const api = {
@@ -320,7 +327,7 @@ export const api = {
     await request(apiCancelledJobSchema, `/jobs/${id}`, { method: 'DELETE' });
     return loadJob(id);
   },
-  // GET /api/jobs/stats
+  // GET /api/health
   getHealth,
   // GET /api/jobs/:id (+ GET /api/aircraft-transit-reports/:id for a finished transit job)
   getJob: async (id: string): Promise<Job> =>

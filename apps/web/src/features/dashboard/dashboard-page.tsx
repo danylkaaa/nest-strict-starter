@@ -34,7 +34,7 @@ export const DashboardPage = () => {
             <RouterLink to="/submit">New job</RouterLink>
           </Button>
         }
-        subtitle="Queue statistics · refreshed every second"
+        subtitle="Queue statistics"
         title="Dashboard"
       />
       <Grid gap="4" templateColumns="repeat(6, 1fr)">
@@ -71,10 +71,6 @@ export const DashboardPage = () => {
                 ['Pending', counts?.pending],
                 ['Scheduled', counts?.scheduled],
                 ['Processing', counts?.processing],
-                [
-                  'Workers busy',
-                  health.data && `${health.data.workers.busy} of ${health.data.workers.total}`,
-                ],
               ] as const
             ).map(([label, value]) => (
               <Flex borderTopWidth="1px" justify="space-between" key={label} py="2">

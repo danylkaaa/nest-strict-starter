@@ -398,7 +398,7 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
       scheduled: 0,
     };
     for (const job of jobs.values()) counts[job.status] += 1;
-    return { counts, healthy: true, workers: { busy: busyWorkers().size, total: workers } };
+    return { counts, healthy: true };
   };
 
   const listEmails = ({ search, status, ...page }: ListEmailsQuery): Page<SentEmail> => {
