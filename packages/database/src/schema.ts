@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { check, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import {
+  check,
+  doublePrecision,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+} from 'drizzle-orm/pg-core';
 import { ulid } from 'ulid';
 
 export const sentEmails = pgTable(
@@ -41,5 +50,83 @@ export const webhookCalls = pgTable(
       sql`(${table.outcome} = 'succeeded' AND ${table.requestId} IS NOT NULL AND ${table.responseValue} IS NOT NULL AND ${table.responseValue} BETWEEN 0 AND 999999 AND ${table.errorName} IS NULL AND ${table.errorMessage} IS NULL) OR (${table.outcome} = 'failed' AND ${table.requestId} IS NULL AND ${table.responseValue} IS NULL AND ${table.errorName} IS NOT NULL AND ${table.errorMessage} IS NOT NULL)`,
     ),
     index('webhook_calls_job_id_id_idx').on(table.jobId, table.id),
+  ],
+);
+
+export const airports = pgTable(
+  'airports',
+  {
+    city: text('city').notNull(),
+    country: text('country').notNull(),
+    iata: text('iata').notNull(),
+    icao: text('icao').primaryKey(),
+    latitude: doublePrecision('latitude').notNull(),
+    longitude: doublePrecision('longitude').notNull(),
+    name: text('name').notNull(),
+  },
+  (table) => [
+    check('airports_icao_format', sql`${table.icao} ~ '^[A-Z]{4}$'`),
+    check(
+      'airports_coordinates_valid',
+      sql`${table.latitude} BETWEEN -90 AND 90 AND ${table.longitude} BETWEEN -180 AND 180`,
+    ),
+  ],
+);
+
+export const aircraft = pgTable(
+  'aircraft',
+  {
+    cruiseAltitudeM: integer('cruise_altitude_m').notNull(),
+    cruiseSpeedKmh: integer('cruise_speed_kmh').notNull(),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => `acf_${ulid()}`),
+    model: text('model').notNull(),
+    registration: text('registration').notNull().unique(),
+  },
+  (table) => [
+    check('aircraft_id_format', sql`${table.id} ~ '^acf_[0-7][0-9A-HJKMNP-TV-Z]{25}$'`),
+    check(
+      'aircraft_performance_positive',
+      sql`${table.cruiseSpeedKmh} > 0 AND ${table.cruiseAltitudeM} > 0`,
+    ),
+  ],
+);
+
+export interface StoredWaypoint {
+  altitudeM: number;
+  latitude: number;
+  longitude: number;
+  speedKmh: number;
+  timestamp: string;
+}
+
+export const aircraftTransitReports = pgTable(
+  'aircraft_transit_reports',
+  {
+    aircraftId: text('aircraft_id')
+      .notNull()
+      .references(() => aircraft.id),
+    arrivalAt: timestamp('arrival_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    departureAt: timestamp('departure_at', { withTimezone: true }).notNull(),
+    destinationIcao: text('destination_icao')
+      .notNull()
+      .references(() => airports.icao),
+    distanceKm: doublePrecision('distance_km').notNull(),
+    durationMinutes: doublePrecision('duration_minutes').notNull(),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => `atr_${ulid()}`),
+    originIcao: text('origin_icao')
+      .notNull()
+      .references(() => airports.icao),
+    waypoints: jsonb('waypoints').$type<StoredWaypoint[]>().notNull(),
+  },
+  (table) => [
+    check(
+      'aircraft_transit_reports_id_format',
+      sql`${table.id} ~ '^atr_[0-7][0-9A-HJKMNP-TV-Z]{25}$'`,
+    ),
   ],
 );

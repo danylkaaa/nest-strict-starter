@@ -23,7 +23,8 @@
     "format:check": "oxfmt --check .",
     "test": "vitest run --passWithNoTests",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx src/seed.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.3",
@@ -35,6 +36,7 @@
     "@types/pg": "^8.23.1",
     "dotenv": "^18.0.4",
     "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2"
   }

@@ -88,6 +88,32 @@
 
 **Rejected:** Separate package `.env` files, because they duplicate the database connection and can drift apart.
 
+## Aircraft transit reports
+
+**Approach chosen:** `modules/aircraft-transits/` generates synthetic reports between any two seeded airports for a seeded aircraft. The path is computed with Turf: `@turf/distance` for the total, then `@turf/bearing` and `@turf/destination` place one waypoint per ~100 km (at least 2) along the great circle, with the first and last points set to the exact airport coordinates. Timestamps are linear in distance, speed is the aircraft's cruise speed, and altitude climbs linearly over the first 10% of the distance, cruises, and descends over the last 10%. Generation waits 1-3 seconds behind a `SimulationDelay` port, and time comes from a `Clock` port so specs use a zero delay and a fixed clock. Reports persist in `aircraft_transit_reports` with a jsonb `waypoints` column; the GeoJSON LineString is derived from the waypoints on read and is not stored.
+
+**Why:** Real flight data (OpenSky) and weather (NOAA) add network dependence, rate limits, and credentials without serving the task's goal of a queue-driven job with an observable result. Placing every waypoint from the origin along the initial bearing keeps one continuous point list across the antimeridian (RJTT to KSFO); `@turf/great-circle` splits such routes into a MultiLineString.
+
+**Rejected:** OpenSky and NOAA as data sources. `@turf/great-circle`, because of the antimeridian split.
+
+**Trade-offs:** Speed is constant at cruise speed, so it does not slow during climb or descent; this is acceptable for a mock. Waypoint longitudes stay within [-180, 180], so a map may draw an RJTT to KSFO line across the whole globe; a UI can unwrap longitudes.
+
+## Seeded reference data
+
+**Approach chosen:** `airports` (ICAO primary key, about 40 major airports) and `aircraft` (`acf_<ULID>` id, unique registration, about 8 real models) are reference tables in `packages/database`, filled by `pnpm db:seed` from committed TypeScript lists with `onConflictDoNothing`, so reruns create no duplicates. Reports reference them by foreign key.
+
+**Why:** Validation needs a closed, known set of airports and aircraft, and committed lists are reviewable and reproducible. The seed is a separate command, not a migration, so reference data can change without rewriting migration history.
+
+**Trade-offs:** A report cannot exist without its seeded rows, so removing a seeded airport or aircraft later requires handling its reports. Seed idempotency and the Drizzle adapter are verified only by `test:integration` and a manual seed-twice check, which need Docker and are outside `pnpm check`.
+
+## Transit request validation split
+
+**Approach chosen:** One private validator (`use-case/validate-transit-request.ts`) serves two public use cases. It uppercases ICAO codes, returns `SameAirportError` before any repository call, resolves airports (`UnknownAirportError` names the code), then the aircraft. `ValidateAircraftTransitRequestUseCase` adds the past-departure check (`DepartureInPastError`) for submission time and saves nothing. `GenerateAircraftTransitReportUseCase` runs the same validator without the past check.
+
+**Why:** A future job controller validates at submission, while a queued or retried job must not fail because time moved on. Sharing one validator keeps the other rules identical in both places.
+
+**Trade-offs:** The report controller and worker consumer are not built yet; only the two read endpoints (`GET /api/airports`, `GET /api/aircraft`) exist, both returning `{ items }` in the standard envelope.
+
 ## Job queue decisions to verify
 
 Job pickup, crash recovery, retry backoff, priority, scheduling, and idempotency remain open for the broader task in `docs/task.md`. The email slice does not decide those policies.

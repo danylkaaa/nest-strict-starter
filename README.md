@@ -7,16 +7,20 @@ NestJS backend and Drizzle database package in a pnpm + Turbo monorepo.
 ```bash
 pnpm install
 pnpm run setup
+pnpm db:seed
 pnpm run dev
 ```
 
 1. `pnpm install` installs workspace dependencies. Use this command, not `pnpm run install`.
 2. `pnpm run setup` copies `.env.example` to the root `.env` when missing, derives `DATABASE_URL` from its PostgreSQL settings, starts PostgreSQL, waits for it to be healthy, and applies migrations. You can run it again after pulling new migrations.
-3. `pnpm run dev` starts the backend and the database package's build watcher. The backend uses port 3000 unless `http__port` in `.env` changes it. Stop the development processes with Ctrl+C.
+3. `pnpm db:seed` fills the `airports` and `aircraft` reference tables (safe to re-run).
+4. `pnpm run dev` starts the backend and the database package's build watcher. The backend uses port 3000 unless `http__port` in `.env` changes it. Stop the development processes with Ctrl+C.
 
 ## API Doc
 
 Open [Swagger UI](http://localhost:3000/api/docs) to confirm the API is running.
+
+After seeding, `GET /api/airports` lists airports sorted by ICAO code and `GET /api/aircraft` lists aircraft sorted by registration.
 
 ## Current backend layout
 

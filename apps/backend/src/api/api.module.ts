@@ -8,6 +8,8 @@ import { ValidationModule } from '@/api/core/validation/validation.module.js';
 import { DatabaseModule } from '@/common/database/database.module';
 
 import { EnvelopeModule } from './core/response-envelope/envelope.module.js';
+import { AircraftApiModule } from './endpoints/aircraft/aircraft.module.js';
+import { AirportsApiModule } from './endpoints/airports/airports.module.js';
 import { EmailsApiModule } from './endpoints/emails/emails.module.js';
 import { GreetingApiModule } from './endpoints/greeting/greeting.module.js';
 
@@ -26,6 +28,8 @@ import { GreetingApiModule } from './endpoints/greeting/greeting.module.js';
     // endpoints
     GreetingApiModule,
     EmailsApiModule,
+    AirportsApiModule,
+    AircraftApiModule,
   ],
 })
 export class AppModule {}
