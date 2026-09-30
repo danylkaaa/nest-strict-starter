@@ -111,7 +111,8 @@ describe('toSubmitInput', () => {
       { runAt: inMinutes(now, -5), schedule: 'scheduled' as const },
       'Scheduled time must be in the future',
     ],
-    [{ priority: '11' }, 'Priority must be a whole number from 0 to 10'],
+    [{ priority: '6' }, 'Priority must be a whole number from 1 to 5'],
+    [{ priority: '0' }, 'Priority must be a whole number from 1 to 5'],
     [{ maxAttempts: '0' }, 'Max attempts must be a whole number from 1 to 10'],
   ])('rejects settings %o', (change, error) => {
     const invalid = form('email');
@@ -166,7 +167,10 @@ describe('taskFormFromSpec', () => {
       payload: { body: { orderId: 7 }, method: 'PUT', url: 'https://api.acme.io/events' },
       type: 'webhook',
     },
-    { payload: { date: '2026-10-09', destination: 'SIN', origin: 'KBP' }, type: 'transit' },
+    {
+      payload: { departureAt: '2026-10-09T14:30:00.000Z', destination: 'SIN', origin: 'KBP' },
+      type: 'transit',
+    },
   ] as const)('round-trips a $type task through the form', (spec) => {
     expect(toTaskSpec(taskFormFromSpec(spec, 'id'))).toEqual({ ok: true, task: spec });
   });

@@ -35,7 +35,7 @@ const useInvalidateJobs = () => {
   const queryClient = useQueryClient();
   return () =>
     Promise.all(
-      ['jobs', 'job', 'health', 'emails'].map((key) =>
+      ['jobs', 'job', 'health', 'emails', 'webhooks', 'reports'].map((key) =>
         queryClient.invalidateQueries({ queryKey: [key] }),
       ),
     );

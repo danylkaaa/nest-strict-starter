@@ -11,7 +11,7 @@ import { Panel } from '@/shared/ui/panel';
 import { toaster } from '@/shared/ui/toaster';
 
 import { BatchTasks } from './batch-tasks';
-import { LabeledField } from './form-controls';
+import { LabeledField, SelectField } from './form-controls';
 import { newIdempotencyKey } from './idempotency-key';
 import { ScheduleFields } from './schedule-fields';
 import { initialSubmitForm, toSubmitInput } from './submit-form';
@@ -27,6 +27,15 @@ const JOB_TYPE_TABS = [
   { label: TASK_TYPE_LABEL.transit, value: 'transit' },
   { label: 'Batch', value: 'batch' },
 ];
+
+// The API accepts priorities 1-5 (higher runs first)
+const PRIORITY_OPTIONS = [
+  ['1', '1 · Lowest'],
+  ['2', '2 · Low'],
+  ['3', '3 · Normal'],
+  ['4', '4 · High'],
+  ['5', '5 · Highest'],
+] as const;
 
 const toJobType = (value: string | null): JobType | undefined =>
   JOB_TYPES.find((type) => type === value);
@@ -145,17 +154,14 @@ export const SubmitJobPage = () => {
         <Panel extra="How and when to run it" p="6" title="Settings">
           <Stack gap="4">
             <Grid gap="3" templateColumns="1fr 1fr">
-              <LabeledField label="Priority (higher first)">
-                <Input
-                  max={10}
-                  min={0}
-                  onChange={(event) => {
-                    updateSettings({ priority: event.currentTarget.value });
-                  }}
-                  type="number"
-                  value={form.settings.priority}
-                />
-              </LabeledField>
+              <SelectField
+                label="Priority (higher first)"
+                onChange={(priority) => {
+                  updateSettings({ priority });
+                }}
+                options={PRIORITY_OPTIONS}
+                value={form.settings.priority}
+              />
               <LabeledField label="Max attempts">
                 <Input
                   max={10}

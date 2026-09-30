@@ -1,5 +1,5 @@
 import { Alert, Button, Center, Grid, Spinner, Stack, Text } from '@chakra-ui/react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 
 import { ApiError } from '@/shared/api-error';
 import { formatDate, formatTime } from '@/shared/format';
@@ -7,7 +7,6 @@ import { Breadcrumbs } from '@/shared/ui/breadcrumbs';
 import { KeyValueList } from '@/shared/ui/key-value-list';
 import { PageHeader } from '@/shared/ui/page-header';
 import { Panel } from '@/shared/ui/panel';
-import { toaster } from '@/shared/ui/toaster';
 
 import { AttemptsPanel } from './components/attempts-panel';
 import { BatchProgress } from './components/batch-progress';
@@ -16,7 +15,7 @@ import { PayloadView } from './components/payload-view';
 import { ResultView } from './components/result-view';
 import { StatusBadge } from './components/status-badge';
 import { canCancel, canRetry, TYPE_LABEL } from './job-rules';
-import { useJob, useSubmitJob } from './queries';
+import { useJob } from './queries';
 import { TransitReportView } from './transit/transit-report-view';
 import { useJobActions } from './use-job-actions';
 
@@ -31,9 +30,7 @@ const subtitle = (job: Job) =>
     : `${TYPE_LABEL[job.type]} job · ${job.attempts} of ${job.maxAttempts} attempts used`;
 
 const JobDetail = ({ job }: { job: Job }) => {
-  const navigate = useNavigate();
   const { busy, cancel, retry } = useJobActions();
-  const rerun = useSubmitJob();
   const report = job.type === 'transit' ? job.result : null;
 
   const crumbs: Crumb[] = [
@@ -44,19 +41,6 @@ const JobDetail = ({ job }: { job: Job }) => {
       : { label: job.id, mono: true, to: `/jobs/${job.id}` },
     ...(report === null ? [] : [{ label: 'Transit report' }]),
   ];
-
-  const rerunReport = () => {
-    if (job.type !== 'transit') return;
-    rerun.mutate(
-      { payload: job.payload, priority: job.priority, type: 'transit' },
-      {
-        onSuccess: ({ job: created }) => {
-          toaster.success({ title: `Report queued as ${created.id}` });
-          void navigate(`/jobs/${created.id}`);
-        },
-      },
-    );
-  };
 
   return (
     <>
@@ -88,11 +72,7 @@ const JobDetail = ({ job }: { job: Job }) => {
                 </Button>
               )}
             </>
-          ) : (
-            <Button disabled={rerun.isPending} onClick={rerunReport} variant="outline">
-              Re-run report
-            </Button>
-          )
+          ) : undefined
         }
         badge={<StatusBadge status={job.status} />}
         mono={report === null}
@@ -131,6 +111,7 @@ const JobDetail = ({ job }: { job: Job }) => {
             <KeyValueList
               items={[
                 { label: 'ID', mono: true, value: job.id },
+                { label: 'Status', value: <StatusBadge status={job.status} /> },
                 { label: 'Type', mono: true, value: job.type },
                 { label: 'Priority', mono: true, value: job.priority },
                 { label: 'Attempts', mono: true, value: `${job.attempts} / ${job.maxAttempts}` },

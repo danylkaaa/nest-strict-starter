@@ -81,7 +81,11 @@ describe('mock server', () => {
             items: [
               emailTask,
               {
-                payload: { date: '2026-10-03', destination: 'XXX', origin: 'JFK' },
+                payload: {
+                  departureAt: '2026-10-03T09:00:00.000Z',
+                  destination: 'XXX',
+                  origin: 'JFK',
+                },
                 type: 'transit',
               },
             ],
@@ -94,7 +98,7 @@ describe('mock server', () => {
     it('rejects a transit report for an unknown airport', () => {
       expect(() =>
         server.submitJob({
-          payload: { date: '2026-10-03', destination: 'XXX', origin: 'JFK' },
+          payload: { departureAt: '2026-10-03T09:00:00.000Z', destination: 'XXX', origin: 'JFK' },
           type: 'transit',
         }),
       ).toThrow(ApiError);
@@ -208,7 +212,7 @@ describe('mock server', () => {
 
     it('builds a transit report with a great-circle path', () => {
       const { job } = server.submitJob({
-        payload: { date: '2026-10-03', destination: 'LHR', origin: 'JFK' },
+        payload: { departureAt: '2026-10-03T09:00:00.000Z', destination: 'LHR', origin: 'JFK' },
         type: 'transit',
       });
 

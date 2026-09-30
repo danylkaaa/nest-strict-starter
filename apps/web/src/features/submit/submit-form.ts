@@ -9,7 +9,8 @@ export interface TaskForm {
   email: { body: string; subject: string; to: string };
   /** Stable identity for list rendering; not sent to the API */
   id: string;
-  transit: { date: string; destination: string; origin: string };
+  /** `departureAt` is a `datetime-local` value read as UTC, e.g. "2026-10-03T14:30" */
+  transit: { departureAt: string; destination: string; origin: string };
   type: TaskType;
   webhook: { body: string; method: 'POST' | 'PUT'; url: string };
 }
@@ -32,6 +33,16 @@ export interface SubmitForm {
   type: JobType;
 }
 
+const DAY_MS = 86_400_000;
+
+/** Tomorrow at 12:00 UTC, so the default departure is never in the past */
+const defaultDeparture = (): string => {
+  const tomorrow = new Date(Date.now() + DAY_MS);
+  return `${tomorrow.toISOString().slice(0, 10)}T12:00`;
+};
+
+const DEPARTURE_FORM_LENGTH = 'YYYY-MM-DDTHH:mm'.length;
+
 export const newTaskForm = (type: TaskType, id: string): TaskForm => ({
   email: {
     body: 'Hi,\n\nYour report is ready.',
@@ -39,7 +50,7 @@ export const newTaskForm = (type: TaskType, id: string): TaskForm => ({
     to: 'ana@example.com',
   },
   id,
-  transit: { date: '2026-10-03', destination: 'LHR', origin: 'JFK' },
+  transit: { departureAt: defaultDeparture(), destination: 'LHR', origin: 'JFK' },
   type,
   webhook: {
     body: '{\n  "order_id": 1042\n}',
@@ -58,7 +69,13 @@ export const taskFormFromSpec = (spec: TaskSpec, id: string): TaskForm => {
       webhook: { ...spec.payload, body: JSON.stringify(spec.payload.body, null, 2) },
     };
   }
-  return { ...form, transit: spec.payload };
+  return {
+    ...form,
+    transit: {
+      ...spec.payload,
+      departureAt: spec.payload.departureAt.slice(0, DEPARTURE_FORM_LENGTH),
+    },
+  };
 };
 
 export const initialSubmitForm = (type: JobType, newId: () => string): SubmitForm => ({
@@ -118,10 +135,17 @@ export const toTaskSpec = (task: TaskForm): TaskResult => {
     if (body === null) return fail('Webhook body must be a JSON object');
     return { ok: true, task: { payload: { body, method, url }, type: 'webhook' } };
   }
-  const { date, destination, origin } = task.transit;
+  const { departureAt, destination, origin } = task.transit;
   if (origin === destination) return fail('Origin and destination must differ');
-  if (date === '') return fail('Date is required');
-  return { ok: true, task: { payload: { date, destination, origin }, type: 'transit' } };
+  const departure = Date.parse(`${departureAt}:00Z`);
+  if (Number.isNaN(departure)) return fail('Departure date and time are required');
+  return {
+    ok: true,
+    task: {
+      payload: { departureAt: new Date(departure).toISOString(), destination, origin },
+      type: 'transit',
+    },
+  };
 };
 
 const toSpec = (
@@ -149,8 +173,8 @@ export const toSubmitInput = (
   idempotencyKey: string,
 ): SubmitFormResult => {
   const { settings } = form;
-  const priority = toInteger(settings.priority, 0, 10);
-  if (priority === null) return fail('Priority must be a whole number from 0 to 10');
+  const priority = toInteger(settings.priority, 1, 5);
+  if (priority === null) return fail('Priority must be a whole number from 1 to 5');
   const maxAttempts = toInteger(settings.maxAttempts, 1, 10);
   if (maxAttempts === null) return fail('Max attempts must be a whole number from 1 to 10');
   let runAt: string | undefined;

@@ -166,7 +166,7 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     const destination = findAirport(payload.destination)!;
     const distance = distanceKm(origin, destination);
     const durationMinutes = Math.round((distance / CRUISE_KMH) * 60 + TAXI_AND_CLIMB_MINUTES);
-    const departure = Date.parse(`${payload.date}T09:00:00Z`);
+    const departure = Date.parse(payload.departureAt);
     return {
       aircraft: pick(random, AIRCRAFT),
       arrivalAt: new Date(departure + durationMinutes * 60_000).toISOString(),

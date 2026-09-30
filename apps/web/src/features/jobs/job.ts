@@ -44,7 +44,8 @@ export interface WebhookPayload {
 }
 
 export interface TransitPayload {
-  date: string;
+  /** ISO timestamp (UTC) of the departure */
+  departureAt: string;
   destination: string;
   origin: string;
 }
@@ -202,4 +203,44 @@ export interface ListEmailsQuery {
   pageSize: number;
   search?: string;
   status?: SentEmailStatus;
+}
+
+export type ReportStatus = 'failed' | 'generated';
+
+export interface SentReport {
+  departureAt: string;
+  destination: string;
+  finishedAt: string;
+  jobId: string;
+  maxAttempts: number;
+  origin: string;
+  status: ReportStatus;
+  tries: number;
+}
+
+export interface ListReportsQuery {
+  page: number;
+  pageSize: number;
+  search?: string;
+  status?: ReportStatus;
+}
+
+export type SentWebhookStatus = 'delivered' | 'failed';
+
+export interface SentWebhook {
+  body: Record<string, unknown>;
+  jobId: string;
+  maxAttempts: number;
+  method: WebhookPayload['method'];
+  sentAt: string;
+  status: SentWebhookStatus;
+  tries: number;
+  url: string;
+}
+
+export interface ListWebhooksQuery {
+  page: number;
+  pageSize: number;
+  search?: string;
+  status?: SentWebhookStatus;
 }

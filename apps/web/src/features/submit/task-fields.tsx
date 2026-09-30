@@ -149,14 +149,14 @@ export const TaskFields = ({ airportOptions, onChange, task }: TaskFieldsProps) 
         options={airportOptions}
         value={task.transit.destination}
       />
-      <LabeledField label="Date">
+      <LabeledField label="Departure (UTC)">
         <Input
           readOnly={readOnly}
           onChange={(event) => {
-            setTransit({ date: event.currentTarget.value });
+            setTransit({ departureAt: event.currentTarget.value });
           }}
-          type="date"
-          value={task.transit.date}
+          type="datetime-local"
+          value={task.transit.departureAt}
         />
       </LabeledField>
     </Grid>
