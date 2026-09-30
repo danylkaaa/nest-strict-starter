@@ -14,7 +14,13 @@ export class JobDto extends createZodDto(
     ),
     id: z.uuid(),
     priority: z.number().int(),
-    result: z.object({ emailId: z.string() }).nullable(),
+    result: z
+      .union([
+        z.object({ emailId: z.string() }),
+        z.object({ webhookCallId: z.string() }),
+        z.object({ reportId: z.string() }),
+      ])
+      .nullable(),
     startAt: z.iso.datetime(),
     status: z.enum(['scheduled', 'pending', 'processing', 'cancelled', 'completed', 'failed']),
   }),

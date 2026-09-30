@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export type JsonValue =
   | string
   | number
@@ -6,10 +8,27 @@ export type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue };
 
-export interface CallWebhookInput {
-  readonly jobId: string;
+export interface WebhookContent {
   readonly url: string;
   readonly payload: JsonValue;
+}
+
+/** Shared by the HTTP DTO and the queue handler; only http(s) URLs are accepted. */
+export const WebhookContentSchema = z.object({
+  payload: z.json(),
+  url: z.url({ protocol: /^https?$/u }).max(2048),
+});
+
+export interface CallWebhookInput extends WebhookContent {
+  readonly jobId: string;
+  /** Stable per job so a repeated call after a crash is one delivery for a real provider. */
+  readonly deliveryKey: string;
+}
+
+export interface CalledWebhook {
+  /** ID of the stored succeeded call record (`whc_<ULID>`). */
+  readonly callId: string;
+  readonly receipt: WebhookReceipt;
 }
 
 /** Stable mock receipt: IDs and the body value vary on every successful call. */

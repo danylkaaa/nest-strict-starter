@@ -1,8 +1,10 @@
-import { EMAIL_QUEUE } from '@/common/queue/queue.service.js';
+import type { QueueName } from '@/common/queue/queue.service.js';
 
 export type JobOutcome = 'pickup' | 'completed' | 'retry_scheduled' | 'failed' | 'invalid_payload';
 
+/** Safe log fields only: queue name, job ID, attempt, and outcome. Never payload content. */
 export function jobLog(
+  queue: QueueName,
   jobId: string,
   attempt: number,
   outcome: JobOutcome,
@@ -10,7 +12,7 @@ export function jobLog(
   attempt: number;
   jobId: string;
   outcome: JobOutcome;
-  queue: string;
+  queue: QueueName;
 } {
-  return { attempt, jobId, outcome, queue: EMAIL_QUEUE };
+  return { attempt, jobId, outcome, queue };
 }

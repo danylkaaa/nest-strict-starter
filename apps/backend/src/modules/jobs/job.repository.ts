@@ -6,10 +6,12 @@ import { jobActivity, jobs } from '@workspace/database/schema';
 import { asc, eq, sql } from 'drizzle-orm';
 import { fromDrizzle } from 'pg-boss';
 
-import { EMAIL_QUEUE, QueueService } from '@/common/queue/queue.service.js';
+import { QueueService } from '@/common/queue/queue.service.js';
+import { RETRY_POLICY } from '@/common/queue/retry-policy.js';
 
-import type { CreateEmailJobInput, EmailJob } from './job.js';
+import type { CreateJobInput, Job } from './job.js';
 import type { JobRepository, JobTransition } from './ports/job.repository.js';
+import type { QueueName } from '@/common/queue/queue.service.js';
 import type { Database } from '@workspace/database/client';
 
 @Injectable()
@@ -28,7 +30,8 @@ export class DrizzleJobRepository implements JobRepository {
   }
 
   async create(
-    input: CreateEmailJobInput,
+    queue: QueueName,
+    input: CreateJobInput,
   ): Promise<{ id: string; startAt: Date; duplicate: boolean }> {
     return this.database.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${input.idempotencyKey}))`);
@@ -48,6 +51,7 @@ export class DrizzleJobRepository implements JobRepository {
         id,
         idempotencyKey: input.idempotencyKey,
         priority: input.priority,
+        queue,
         startAt,
         status: input.type === 'schedule' ? 'scheduled' : 'pending',
         type: input.type,
@@ -58,13 +62,11 @@ export class DrizzleJobRepository implements JobRepository {
         jobId: id,
         recordedAt: sql`clock_timestamp()`,
       });
-      const queuedId = await this.queue.boss.send(EMAIL_QUEUE, input.payload, {
+      const queuedId = await this.queue.boss.send(queue, input.payload, {
+        ...RETRY_POLICY,
         db: fromDrizzle(tx, sql),
         id,
         priority: input.priority,
-        retryBackoff: true,
-        retryDelay: 60,
-        retryLimit: 3,
         startAfter: startAt,
       });
       if (queuedId !== id) throw new Error('Queue insertion did not return the assigned job ID.');
@@ -72,12 +74,13 @@ export class DrizzleJobRepository implements JobRepository {
     });
   }
 
-  async getJob(id: string): Promise<Omit<EmailJob, 'activity'> | null> {
+  async getJob(id: string): Promise<Omit<Job, 'activity'> | null> {
     const [row] = await this.database.select().from(jobs).where(eq(jobs.id, id));
     return row
       ? {
           id: row.id,
           priority: row.priority,
+          queue: row.queue,
           result: row.result,
           startAt: row.startAt,
           status: row.status,
@@ -85,7 +88,7 @@ export class DrizzleJobRepository implements JobRepository {
       : null;
   }
 
-  async getJobActivity(id: string): Promise<EmailJob['activity']> {
+  async getJobActivity(id: string): Promise<Job['activity']> {
     return this.database
       .select({
         attempt: jobActivity.attempt,
@@ -100,19 +103,20 @@ export class DrizzleJobRepository implements JobRepository {
   }
 
   async getQueueJob(
+    queue: QueueName,
     id: string,
   ): Promise<{ state: string; startAfter: Date; retryCount: number } | null> {
-    const [queued] = await this.queue.boss.findJobs(EMAIL_QUEUE, { id });
+    const [queued] = await this.queue.boss.findJobs(queue, { id });
     return queued ?? null;
   }
 
-  async setJobStatus(id: string, status: EmailJob['status']): Promise<void> {
+  async setJobStatus(id: string, status: Job['status']): Promise<void> {
     await this.database.update(jobs).set({ status, updatedAt: new Date() }).where(eq(jobs.id, id));
   }
 
   async addJobLog(
     id: string,
-    event: EmailJob['activity'][number]['event'],
+    event: Job['activity'][number]['event'],
     eventKey: string,
     attempt?: number,
     errorCategory?: string,
@@ -130,30 +134,32 @@ export class DrizzleJobRepository implements JobRepository {
       .onConflictDoNothing();
   }
 
-  async listProcessingJobIds(): Promise<string[]> {
-    const rows = await this.database
-      .select({ id: jobs.id })
+  async listProcessingJobs(): Promise<{ id: string; queue: QueueName }[]> {
+    return this.database
+      .select({ id: jobs.id, queue: jobs.queue })
       .from(jobs)
       .where(eq(jobs.status, 'processing'));
-    return rows.map((row) => row.id);
   }
 
-  async cancelJob(id: string): Promise<'cancelled' | 'not_found' | 'not_cancellable'> {
+  async cancelJob(
+    queue: QueueName,
+    id: string,
+  ): Promise<'cancelled' | 'not_found' | 'not_cancellable'> {
     return this.database.transaction(async (tx) => {
       const [row] = await tx.select().from(jobs).where(eq(jobs.id, id)).for('update');
       if (!row) return 'not_found';
       if (row.status !== 'scheduled' && row.status !== 'pending') return 'not_cancellable';
       await tx.execute(
-        sql`SELECT id FROM pgboss.job WHERE name = ${EMAIL_QUEUE} AND id = ${id}::uuid FOR UPDATE`,
+        sql`SELECT id FROM pgboss.job WHERE name = ${queue} AND id = ${id}::uuid FOR UPDATE`,
       );
-      const [queueJob] = await this.queue.boss.findJobs(EMAIL_QUEUE, {
+      const [queueJob] = await this.queue.boss.findJobs(queue, {
         db: fromDrizzle(tx, sql),
         id,
       });
       if (!queueJob || (queueJob.state !== 'created' && queueJob.state !== 'retry'))
         return 'not_cancellable';
-      await this.queue.boss.cancel(EMAIL_QUEUE, id, { db: fromDrizzle(tx, sql) });
-      const [cancelled] = await this.queue.boss.findJobs(EMAIL_QUEUE, {
+      await this.queue.boss.cancel(queue, id, { db: fromDrizzle(tx, sql) });
+      const [cancelled] = await this.queue.boss.findJobs(queue, {
         db: fromDrizzle(tx, sql),
         id,
       });

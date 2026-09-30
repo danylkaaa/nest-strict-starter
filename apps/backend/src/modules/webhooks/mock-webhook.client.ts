@@ -1,4 +1,4 @@
-import { randomInt, randomUUID } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 
 import { Injectable } from '@nestjs/common';
@@ -12,18 +12,19 @@ import type { Result } from 'neverthrow';
 
 @Injectable()
 export class MockWebhookClient implements WebhookClient {
-  async call(
-    _input: CallWebhookInput,
-  ): Promise<Result<WebhookReceipt, WebhookDeliveryFailedError>> {
+  async call(input: CallWebhookInput): Promise<Result<WebhookReceipt, WebhookDeliveryFailedError>> {
     await setTimeout(randomInt(1000, 2001));
 
     if (randomInt(0, 10) === 0) {
       return err(new WebhookDeliveryFailedError());
     }
 
+    // Derived from the delivery key so a repeated call returns the same receipt, as a real
+    // provider honoring the key would.
+    const digest = createHash('sha256').update(input.deliveryKey).digest();
     return ok({
-      body: { accepted: true, value: randomInt(0, 1_000_000) },
-      requestId: `mock_${randomUUID()}`,
+      body: { accepted: true, value: digest.readUInt32BE(0) % 1_000_000 },
+      requestId: `mock_${digest.toString('hex')}`,
       status: 'delivered',
     });
   }

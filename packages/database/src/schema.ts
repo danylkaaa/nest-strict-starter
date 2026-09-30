@@ -31,6 +31,10 @@ export const sentEmails = pgTable(
   ],
 );
 
+export const JOB_QUEUES = ['email', 'webhook', 'aircraft-report'] as const;
+
+export type JobResultValue = { emailId: string } | { webhookCallId: string } | { reportId: string };
+
 export const jobs = pgTable(
   'jobs',
   {
@@ -38,7 +42,8 @@ export const jobs = pgTable(
     id: uuid('id').primaryKey(),
     idempotencyKey: uuid('idempotency_key').notNull().unique(),
     priority: integer('priority').notNull(),
-    result: jsonb('result').$type<{ emailId: string }>(),
+    queue: text('queue', { enum: JOB_QUEUES }).notNull(),
+    result: jsonb('result').$type<JobResultValue>(),
     startAt: timestamp('start_at', { withTimezone: true }).notNull(),
     status: text('status', {
       enum: ['scheduled', 'pending', 'processing', 'cancelled', 'completed', 'failed'],
@@ -52,6 +57,7 @@ export const jobs = pgTable(
       'jobs_status_valid',
       sql`${table.status} IN ('scheduled', 'pending', 'processing', 'cancelled', 'completed', 'failed')`,
     ),
+    check('jobs_queue_valid', sql`${table.queue} IN ('email', 'webhook', 'aircraft-report')`),
     check('jobs_type_valid', sql`${table.type} IN ('instant', 'schedule')`),
     index('jobs_status_start_at_idx').on(table.status, table.startAt),
   ],
@@ -94,7 +100,9 @@ export const webhookCalls = pgTable(
     id: text('id')
       .primaryKey()
       .$defaultFn(() => `whc_${ulid()}`),
-    jobId: text('job_id').notNull(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => jobs.id),
     outcome: text('outcome', { enum: ['succeeded', 'failed'] }).notNull(),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
     requestId: text('request_id'),
@@ -108,6 +116,9 @@ export const webhookCalls = pgTable(
       sql`(${table.outcome} = 'succeeded' AND ${table.requestId} IS NOT NULL AND ${table.responseValue} IS NOT NULL AND ${table.responseValue} BETWEEN 0 AND 999999 AND ${table.errorName} IS NULL AND ${table.errorMessage} IS NULL) OR (${table.outcome} = 'failed' AND ${table.requestId} IS NULL AND ${table.responseValue} IS NULL AND ${table.errorName} IS NOT NULL AND ${table.errorMessage} IS NOT NULL)`,
     ),
     index('webhook_calls_job_id_id_idx').on(table.jobId, table.id),
+    uniqueIndex('webhook_calls_job_id_succeeded_idx')
+      .on(table.jobId)
+      .where(sql`${table.outcome} = 'succeeded'`),
   ],
 );
 
@@ -176,6 +187,9 @@ export const aircraftTransitReports = pgTable(
     id: text('id')
       .primaryKey()
       .$defaultFn(() => `atr_${ulid()}`),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => jobs.id),
     originIcao: text('origin_icao')
       .notNull()
       .references(() => airports.icao),
@@ -186,5 +200,6 @@ export const aircraftTransitReports = pgTable(
       'aircraft_transit_reports_id_format',
       sql`${table.id} ~ '^atr_[0-7][0-9A-HJKMNP-TV-Z]{25}$'`,
     ),
+    uniqueIndex('aircraft_transit_reports_job_id_idx').on(table.jobId),
   ],
 );

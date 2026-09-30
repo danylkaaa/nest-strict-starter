@@ -72,6 +72,11 @@ export class DrizzleAircraftTransitRepository implements AircraftTransitReposito
   }
 
   async saveReport(report: NewTransitReport) {
+    const columns = {
+      createdAt: aircraftTransitReports.createdAt,
+      id: aircraftTransitReports.id,
+    };
+    // The unique job_id makes a retried job resolve to the report it already stored.
     const [saved] = await this.database
       .insert(aircraftTransitReports)
       .values({
@@ -81,15 +86,25 @@ export class DrizzleAircraftTransitRepository implements AircraftTransitReposito
         destinationIcao: report.destinationIcao,
         distanceKm: report.distanceKm,
         durationMinutes: report.durationMinutes,
+        jobId: report.jobId,
         originIcao: report.originIcao,
         waypoints: report.waypoints.map((waypoint) => toStoredWaypoint(waypoint)),
       })
-      .returning({ createdAt: aircraftTransitReports.createdAt, id: aircraftTransitReports.id })
+      .onConflictDoNothing({ target: aircraftTransitReports.jobId })
+      .returning(columns)
       .catch(() => {
         throw new Error('Failed to persist aircraft transit report.');
       });
-    if (!saved) throw new Error('Aircraft transit report insert returned no record.');
-    return saved;
+    if (saved) return saved;
+    const [existing] = await this.database
+      .select(columns)
+      .from(aircraftTransitReports)
+      .where(eq(aircraftTransitReports.jobId, report.jobId))
+      .catch(() => {
+        throw new Error('Failed to persist aircraft transit report.');
+      });
+    if (!existing) throw new Error('Aircraft transit report insert returned no record.');
+    return existing;
   }
 
   async findReport(id: string): Promise<TransitReport | null> {

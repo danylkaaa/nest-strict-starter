@@ -6,10 +6,14 @@ import { WEBHOOK_REPOSITORY } from '@/modules/webhooks/ports/webhook.repository.
 import type { WebhookClient } from '@/modules/webhooks/ports/webhook-client.js';
 import type { WebhookRepository } from '@/modules/webhooks/ports/webhook.repository.js';
 import type { WebhookDeliveryFailedError } from '@/modules/webhooks/webhook.errors.js';
-import type { CallWebhookInput, WebhookReceipt } from '@/modules/webhooks/webhook.js';
+import type { CalledWebhook, CallWebhookInput } from '@/modules/webhooks/webhook.js';
 import type { Result } from 'neverthrow';
 
-export type { CallWebhookInput, WebhookReceipt } from '@/modules/webhooks/webhook.js';
+export type {
+  CalledWebhook,
+  CallWebhookInput,
+  WebhookReceipt,
+} from '@/modules/webhooks/webhook.js';
 export type { WebhookDeliveryFailedError } from '@/modules/webhooks/webhook.errors.js';
 
 @Injectable()
@@ -21,9 +25,9 @@ export class CallWebhookUseCase {
 
   async execute(
     input: CallWebhookInput,
-  ): Promise<Result<WebhookReceipt, WebhookDeliveryFailedError>> {
+  ): Promise<Result<CalledWebhook, WebhookDeliveryFailedError>> {
     const result = await this.client.call(input);
-    await this.repository.save(
+    const saved = await this.repository.save(
       result.isOk()
         ? { jobId: input.jobId, outcome: 'succeeded', receipt: result.value }
         : {
@@ -32,6 +36,6 @@ export class CallWebhookUseCase {
             outcome: 'failed',
           },
     );
-    return result;
+    return result.map((receipt) => ({ callId: saved.id, receipt }));
   }
 }

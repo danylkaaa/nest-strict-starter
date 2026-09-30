@@ -5,36 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1790775240638,
-      "tag": "0000_tan_zeigeist",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1790778092118,
-      "tag": "0001_sad_iron_patriot",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1790778641386,
-      "tag": "0002_gray_justice",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1790795390028,
-      "tag": "0003_bouncy_namor",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1790795782030,
-      "tag": "0004_wakeful_ulik",
+      "when": 1790796339741,
+      "tag": "0000_high_daimon_hellstrom",
       "breakpoints": true
     }
   ]

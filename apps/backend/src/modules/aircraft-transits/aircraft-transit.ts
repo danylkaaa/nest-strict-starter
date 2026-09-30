@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export interface GeoJsonLineString {
   type: 'LineString';
   /** Positions in [longitude, latitude] order. */
@@ -29,6 +31,17 @@ export interface TransitRequest {
   departureAt: Date;
 }
 
+/**
+ * Queue payload of an aircraft report job. `departureAt` is an ISO string because the payload is
+ * JSON; shared by the HTTP DTO and the worker handler.
+ */
+export const TransitJobPayloadSchema = z.object({
+  aircraftId: z.string().trim().min(1).max(64),
+  departureAt: z.iso.datetime({ offset: true }),
+  destinationIcao: z.string().regex(/^[A-Za-z]{4}$/u),
+  originIcao: z.string().regex(/^[A-Za-z]{4}$/u),
+});
+
 export interface ValidatedTransitRequest {
   origin: Airport;
   destination: Airport;
@@ -52,10 +65,16 @@ export interface TransitPath {
 }
 
 export interface NewTransitReport extends TransitPath {
+  jobId: string;
   originIcao: string;
   destinationIcao: string;
   aircraftId: string;
   departureAt: Date;
+}
+
+export interface GenerateTransitReportInput extends TransitRequest {
+  /** The report job; a repeated job ID returns the report already stored for it. */
+  jobId: string;
 }
 
 export interface TransitReport extends TransitPath {

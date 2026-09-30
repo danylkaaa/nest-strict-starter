@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { JOB_REPOSITORY } from './ports/job.repository.js';
 
-import type { EmailJob } from './job.js';
+import type { Job, JobResult } from './job.js';
 import type { JobRepository, JobTransition } from './ports/job.repository.js';
 
 @Injectable()
@@ -10,13 +10,15 @@ export class JobService {
   constructor(@Inject(JOB_REPOSITORY) private readonly repository: JobRepository) {}
 
   async cancel(id: string): Promise<'cancelled' | 'not_found' | 'not_cancellable'> {
-    return this.repository.cancelJob(id);
+    const row = await this.repository.getJob(id);
+    if (!row) return 'not_found';
+    return this.repository.cancelJob(row.queue, id);
   }
 
-  async get(id: string): Promise<EmailJob | null> {
+  async get(id: string): Promise<Job | null> {
     const row = await this.repository.getJob(id);
     if (!row) return null;
-    const queued = await this.repository.getQueueJob(id);
+    const queued = await this.repository.getQueueJob(row.queue, id);
     const status = queued ? this.queueStatus(queued.state, queued.startAfter) : row.status;
     if (status !== row.status) await this.repository.setJobStatus(id, status);
     if (queued?.state === 'retry' || queued?.state === 'failed') {
@@ -35,8 +37,8 @@ export class JobService {
   }
 
   async reconcileProcessing(): Promise<void> {
-    for (const id of await this.repository.listProcessingJobIds()) {
-      const queued = await this.repository.getQueueJob(id);
+    for (const { id, queue } of await this.repository.listProcessingJobs()) {
+      const queued = await this.repository.getQueueJob(queue, id);
       if (queued?.state === 'retry' || queued?.state === 'failed')
         await this.recordFailure(
           id,
@@ -86,15 +88,15 @@ export class JobService {
     });
   }
 
-  async recordCompletion(id: string, attempt: number, emailId: string): Promise<void> {
+  async recordCompletion(id: string, attempt: number, result: JobResult): Promise<void> {
     await this.repository.writeJobTransition(id, {
       logs: [{ attempt, event: 'completed', eventKey: 'completed' }],
-      result: { emailId },
+      result,
       status: 'completed',
     });
   }
 
-  private queueStatus(state: string, startAfter: Date): EmailJob['status'] {
+  private queueStatus(state: string, startAfter: Date): Job['status'] {
     switch (state) {
       case 'created':
       case 'retry':

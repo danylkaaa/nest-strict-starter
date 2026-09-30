@@ -10,7 +10,7 @@ import { validateTransitRequest } from './validate-transit-request.js';
 import type { TransitRequestError } from './validate-transit-request.js';
 import type {
   AircraftTransitReport,
-  TransitRequest,
+  GenerateTransitReportInput,
 } from '@/modules/aircraft-transits/aircraft-transit.js';
 import type { AircraftTransitRepository } from '@/modules/aircraft-transits/ports/aircraft-transit.repository.js';
 import type { SimulationDelay } from '@/modules/aircraft-transits/ports/simulation-delay.js';
@@ -18,7 +18,7 @@ import type { Result } from 'neverthrow';
 
 export type {
   AircraftTransitReport,
-  TransitRequest,
+  GenerateTransitReportInput,
 } from '@/modules/aircraft-transits/aircraft-transit.js';
 export type {
   SameAirportError,
@@ -38,7 +38,7 @@ export class GenerateAircraftTransitReportUseCase {
   ) {}
 
   async execute(
-    input: TransitRequest,
+    input: GenerateTransitReportInput,
   ): Promise<Result<AircraftTransitReport, TransitRequestError>> {
     const validated = await validateTransitRequest(this.repository, input);
     if (validated.isErr()) return err(validated.error);
@@ -51,6 +51,7 @@ export class GenerateAircraftTransitReportUseCase {
       aircraftId: aircraft.id,
       departureAt,
       destinationIcao: destination.icao,
+      jobId: input.jobId,
       originIcao: origin.icao,
     });
 

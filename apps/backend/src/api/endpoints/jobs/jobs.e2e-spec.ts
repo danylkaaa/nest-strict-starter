@@ -415,7 +415,7 @@ describe('email jobs API and worker', () => {
       .execute({ ...payload, deliveryKey: `email-job:${created.data.id}` });
     expect(delivery.isOk()).toBe(true);
     const emailId = delivery.map((email) => email.id).unwrapOr('');
-    await api.get(CompleteJobUseCase).execute(created.data.id, 2, emailId);
+    await api.get(CompleteJobUseCase).execute(created.data.id, 2, { emailId });
     await queue.boss.complete(EMAIL_QUEUE, { id: created.data.id, retryCount: 1 });
     const events = await database
       .select({ attempt: jobActivity.attempt, event: jobActivity.event })

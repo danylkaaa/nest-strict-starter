@@ -14,7 +14,7 @@
 
 ## Webhook simulation
 
-**Approach chosen:** A webhook use case calls a replaceable mock client with a URL and JSON payload. The client waits 1–2 seconds, then returns a stable receipt shape with random values on success or a feature-owned `WebhookDeliveryFailedError` in a `Result` on 10% of calls. It makes no network request.
+**Approach chosen:** A webhook use case calls a replaceable mock client with a URL and JSON payload. The client waits 1–2 seconds, then returns a receipt of a stable shape on success, with its values derived from the job's delivery key so a repeated call returns the same receipt, or a feature-owned `WebhookDeliveryFailedError` in a `Result` on 10% of calls. It makes no network request.
 
 **Why:** The module can be called by a future worker, while the expected simulated failure remains separate from defects and can later drive retry behavior. The user's 10% failure requirement supersedes the 20% in `docs/task.md`.
 
@@ -26,11 +26,11 @@
 
 **Approach chosen:** Store one `webhook_calls` row for every completed call, whether it succeeded or failed. Each row has a `whc_<ULID>` ID, a required indexed `job_id`, an outcome, the successful receipt fields or the expected error name and message, and a record timestamp. A lookup by job ID returns attempts newest first.
 
-**Why:** A job may retry a webhook; retaining each attempt makes later inspection possible without overwriting previous outcomes. The current project has no jobs table, so `job_id` is a logical reference rather than a foreign key.
+**Why:** A job may retry a webhook; retaining each attempt makes later inspection possible without overwriting previous outcomes. `job_id` is now a `uuid` foreign key to `jobs`, because webhook delivery runs as a queued job (see "Webhook and aircraft report jobs" below), so PostgreSQL enforces that every call belongs to a real job. A partial unique index on `job_id` where `outcome = 'succeeded'` allows many failed attempts but only one success per job.
 
-**Trade-offs:** Until the jobs table exists, PostgreSQL cannot enforce that a referenced job exists. The current receipt is stored as columns, so a future real provider with a different response shape may need a migration. The database checks that success and failure fields are mutually consistent.
+**Trade-offs:** The receipt is stored as columns, so a future real provider with a different response shape may need a migration. The database checks that success and failure fields are mutually consistent. The use case returns the stored call's ID with the receipt so the job result can reference it; a repeated success resolves to the first stored record.
 
-**Rejected:** One row per job, because retries would overwrite history; a speculative jobs table, because its lifecycle and queue ownership remain undecided.
+**Rejected:** One row per job, because retries would overwrite history. The earlier "no jobs table, so a logical reference only" choice was replaced once the jobs table existed.
 
 ## Sent-mail identity and listing
 
@@ -122,7 +122,7 @@
 
 **Why:** The application needs a durable submission-key constraint and readable activity beyond pg-boss's internal retention. A unique event key lets reconciliation or a retried transition record the same lifecycle event safely once. A separate delivery key lets the mock, and a future provider with server-side idempotency, avoid a second delivery after worker retry. Worker logs show pickup and attempt outcomes using queue name, job ID, and attempt number; the database activity log remains the durable history, and email content stays out of logs.
 
-**Setup:** `pnpm setup` runs Drizzle migrations first, then invokes the backend-owned pg-boss migration command to create or upgrade its schema and register the email queue. API and worker start pg-boss with `migrate: false` and verify the queue exists without running DDL. Setup owns schema changes, so database readiness is explicit before either process starts.
+**Setup:** `pnpm run setup` runs Drizzle migrations first, then invokes the backend-owned pg-boss migration command to create or upgrade its schema and register every queue in `QUEUES` (`email`, `webhook`, `aircraft-report`). API and worker start pg-boss with `migrate: false` and verify each queue exists without running DDL. Setup owns schema changes, so database readiness is explicit before either process starts.
 
 **Trade-offs and items to verify:** Each queue's `work()` registration has its own `localConcurrency` limit (default 1); with multiple queues in one worker process, their limits add up and there is no single process-wide cap. This keeps queue configuration independent but lets queues compete for the process's CPU, memory, and database connections. The JSON result is flexible for later job types but cannot use a foreign key to `sent_emails`; the worker must write the ID returned by the email use case and integration tests must verify it resolves to the sent record. Queue state and application state must be reconciled after a crash between an event write and queue settlement. A local transaction cannot make a future external email provider call exactly once; its API must honor the delivery key. The implementation must verify pg-boss transaction and terminal-failure APIs against the installed release. Priority orders eligible jobs but does not preempt active work.
 
@@ -135,3 +135,13 @@
 **Why:** Reading queue state and deciding public status or activity are application decisions, while database access belongs in the repository.
 
 **Trade-off:** The service still relies on a repository cancellation operation that combines several writes; splitting those calls across service-level awaits would lose the existing transaction and pickup safety. Queue reconciliation on GET remains best-effort and idempotent through unique event keys.
+
+## Webhook and aircraft report jobs: duplicate external calls after a crash
+
+**Approach chosen:** Webhook delivery and aircraft report generation run as queued jobs on their own queues, with routes per queue (`POST /api/jobs/email`, `/webhook`, `/aircraft-report`) that follow the email rules: a UUID submission key checked first (409 on any repeat), then schedule validation, pg-boss retries (3 retries, 60 s delay, backoff; `MAX_ATTEMPTS = 4`) from one shared policy in `common/queue/retry-policy.ts`, and append-only `job_activity`. `jobs.queue` records which queue owns a row, so `GET` and `DELETE /api/jobs/:id` work for all three, and `jobs.result` is a union: `{ emailId }`, `{ webhookCallId }`, or `{ reportId }`. `QUEUES` in `common/queue/queue.service.ts` lists the queues; `pnpm run setup` creates them and API and worker startup refuse a missing one. The aircraft route runs the public `ValidateAircraftTransitRequestUseCase` at submission (HTTP 400, including the past-departure check); the worker calls `GenerateAircraftTransitReportUseCase`, which has no past check, so a retried job does not fail as time passes. Unknown airport, unknown aircraft, same airport, and malformed payloads go straight to dead-letter because a retry cannot change the outcome; thrown errors and webhook delivery failures are retryable. Nothing is deployed, so the schema was rewritten and migrations regenerated from `0000` without backfill; reset a development database with `docker compose down -v && pnpm run setup`.
+
+**Why:** A worker can crash after an external side effect and before the job is marked complete, so pg-boss will run the job again. Each side effect therefore has a per-job key that makes the repeat harmless. The webhook delivery key is `webhook-job:<jobId>`: the mock client derives its receipt from it, and a partial unique index on `webhook_calls(job_id) WHERE outcome = 'succeeded'` keeps one success per job; a repeated success resolves to the stored record, so the job result points at it. `aircraft_transit_reports.job_id` is unique and `saveReport` returns the existing report for a repeated job, so a retry produces one report. Webhook logs carry only queue, job ID, attempt, and outcome, never the URL or payload.
+
+**Trade-offs and items to verify:** The key makes a repeat safe only if the provider honors it server-side; the mock does, and a real webhook receiver must accept the key (for example as an idempotency header) or may receive the call twice. Delivery and its record cannot share a transaction, so a crash between them can leave a delivered call without a record until the retry writes it. Retrying also re-runs the simulated 1 to 3 second report delay. The queue name list is duplicated in `scripts/migrate-queue.mjs` because a plain script cannot import the TypeScript source; a unit test checks the two stay in sync. The integration suites share one database and run serially (`fileParallelism: false`) because any worker consumes every queue's jobs.
+
+**Rejected:** One generic route with a `queue` field, because payload schemas and error mapping differ per queue. A generic `queue` column without a result union, because the three results have different identities. Treating the repeated webhook success as an error, because the retry is expected and must complete the job.

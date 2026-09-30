@@ -50,7 +50,7 @@ describe('email job handler', () => {
   it('completes the job with the sent email id', async () => {
     const { complete, fail, handler } = await setup(() => Promise.resolve(ok(sentEmail)));
     await expect(handler.handle(job(0))).resolves.toEqual({ id: 'job-1', status: 'completed' });
-    expect(complete).toHaveBeenCalledWith('job-1', 1, 'eml_1');
+    expect(complete).toHaveBeenCalledWith('job-1', 1, { emailId: 'eml_1' });
     expect(fail).not.toHaveBeenCalled();
   });
 

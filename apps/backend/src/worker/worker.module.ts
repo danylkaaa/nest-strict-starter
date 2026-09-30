@@ -7,13 +7,17 @@ import { DiscoveryModule } from '@nestjs/core';
 import { DatabaseConfigSchema } from '@/common/database/database.config.js';
 import { DatabaseModule } from '@/common/database/database.module.js';
 import { QueueModule } from '@/common/queue/queue.module.js';
+import { AircraftTransitsModule } from '@/modules/aircraft-transits/aircraft-transits.module.js';
 import { EmailsModule } from '@/modules/emails/emails.module.js';
 import { JobsModule } from '@/modules/jobs/jobs.module.js';
+import { WebhooksModule } from '@/modules/webhooks/webhooks.module.js';
 
 import { WorkerLoggerModule } from './core/config/worker-logger.module.js';
 import { JobHandlerRegistry } from './core/pg-boss/job-handler.registry.js';
 import { JobRecoveryService } from './modules/activity-logs/job-recovery.service.js';
+import { AircraftReportJobHandler } from './queues/aircraft-report/aircraft-report-job.handler.js';
 import { EmailJobHandler } from './queues/email/email-job.handler.js';
+import { WebhookJobHandler } from './queues/webhook/webhook-job.handler.js';
 
 @Module({
   imports: [
@@ -29,9 +33,17 @@ import { EmailJobHandler } from './queues/email/email-job.handler.js';
     }),
     WorkerLoggerModule,
     DiscoveryModule,
+    AircraftTransitsModule,
     EmailsModule,
     JobsModule,
+    WebhooksModule,
   ],
-  providers: [EmailJobHandler, JobHandlerRegistry, JobRecoveryService],
+  providers: [
+    EmailJobHandler,
+    WebhookJobHandler,
+    AircraftReportJobHandler,
+    JobHandlerRegistry,
+    JobRecoveryService,
+  ],
 })
 export class WorkerModule {}

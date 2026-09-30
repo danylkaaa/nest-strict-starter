@@ -1,4 +1,4 @@
-import type { EmailContent } from '@/modules/emails/email.js';
+import type { QueueName } from '@/common/queue/queue.service.js';
 
 export type JobStatus =
   | 'scheduled'
@@ -7,12 +7,15 @@ export type JobStatus =
   | 'cancelled'
   | 'completed'
   | 'failed';
-export interface CreateEmailJobInput {
+
+export type JobResult = { emailId: string } | { webhookCallId: string } | { reportId: string };
+
+export interface CreateJobInput<TPayload extends object = object> {
   idempotencyKey: string;
   priority: number;
   type: 'instant' | 'schedule';
   startAt?: Date;
-  payload: EmailContent;
+  payload: TPayload;
 }
 export interface JobActivity {
   id: string;
@@ -21,10 +24,11 @@ export interface JobActivity {
   errorCategory: string | null;
   recordedAt: Date;
 }
-export interface EmailJob {
+export interface Job {
   id: string;
+  queue: QueueName;
   priority: number;
-  result: { emailId: string } | null;
+  result: JobResult | null;
   status: JobStatus;
   startAt: Date;
   activity: JobActivity[];

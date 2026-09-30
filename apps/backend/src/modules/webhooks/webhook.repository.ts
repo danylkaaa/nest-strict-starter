@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { getDrizzleToken } from '@nestjs/drizzle';
 import { webhookCalls } from '@workspace/database/schema';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 
 import type { WebhookRepository } from './ports/webhook.repository.js';
 import type { ListWebhookCallsInput, RecordedWebhookCall, WebhookCallResult } from './webhook.js';
@@ -11,7 +11,7 @@ import type { Database } from '@workspace/database/client';
 export class DrizzleWebhookRepository implements WebhookRepository {
   constructor(@Inject(getDrizzleToken()) private readonly database: Database) {}
 
-  async save(call: WebhookCallResult & { readonly jobId: string }): Promise<void> {
+  async save(call: WebhookCallResult & { readonly jobId: string }): Promise<{ id: string }> {
     const values =
       call.outcome === 'succeeded'
         ? {
@@ -26,13 +26,27 @@ export class DrizzleWebhookRepository implements WebhookRepository {
             jobId: call.jobId,
             outcome: call.outcome,
           };
-    await this.database
+    // A second success for a job (retry after a crash) conflicts with the partial unique index
+    // and resolves to the stored record instead of a duplicate.
+    const [saved] = await this.database
       .insert(webhookCalls)
       .values(values)
+      .onConflictDoNothing()
+      .returning({ id: webhookCalls.id })
       .catch(() => {
         // Drizzle query errors include parameters; keep them out of application logs.
         throw new Error('Failed to persist webhook call.');
       });
+    if (saved) return saved;
+    const [existing] = await this.database
+      .select({ id: webhookCalls.id })
+      .from(webhookCalls)
+      .where(and(eq(webhookCalls.jobId, call.jobId), eq(webhookCalls.outcome, 'succeeded')))
+      .catch(() => {
+        throw new Error('Failed to persist webhook call.');
+      });
+    if (!existing) throw new Error('Failed to persist webhook call.');
+    return existing;
   }
 
   async list({ jobId }: ListWebhookCallsInput): Promise<RecordedWebhookCall[]> {

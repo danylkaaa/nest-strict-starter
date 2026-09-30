@@ -1,4 +1,7 @@
+import { randomUUID } from 'node:crypto';
+
 import { createDrizzleInstance } from '@workspace/database/client';
+import { jobs } from '@workspace/database/schema';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -6,11 +9,43 @@ import { DrizzleAircraftTransitRepository } from './aircraft-transit.repository.
 import { buildTransitPath } from './transit-path.js';
 
 const pool = new Pool({ connectionString: process.env['DATABASE_URL'] });
-const repository = new DrizzleAircraftTransitRepository(createDrizzleInstance(pool));
+const database = createDrizzleInstance(pool);
+const repository = new DrizzleAircraftTransitRepository(database);
+
+const createJob = async (): Promise<string> => {
+  const id = randomUUID();
+  await database.insert(jobs).values({
+    id,
+    idempotencyKey: randomUUID(),
+    priority: 1,
+    queue: 'aircraft-report',
+    startAt: new Date(),
+    status: 'pending',
+    type: 'instant',
+  });
+  return id;
+};
 
 const required = <T>(value: T | undefined): T => {
   if (value === undefined) throw new Error('Seed the database first: pnpm db:seed.');
   return value;
+};
+
+const buildReport = async (jobId: string) => {
+  const airports = await repository.findAirports(['RJTT', 'KSFO']);
+  const origin = required(airports.find((airport) => airport.icao === 'RJTT'));
+  const destination = required(airports.find((airport) => airport.icao === 'KSFO'));
+  const aircraft = required((await repository.listAircraft())[0]);
+  const departureAt = new Date('2031-01-01T10:00:00.000Z');
+  const path = buildTransitPath(origin, destination, aircraft, departureAt);
+  return {
+    ...path,
+    aircraftId: aircraft.id,
+    departureAt,
+    destinationIcao: destination.icao,
+    jobId,
+    originIcao: origin.icao,
+  };
 };
 
 // Requires a migrated and seeded database: pnpm db:migrate && pnpm db:seed.
@@ -48,6 +83,20 @@ describe('drizzle aircraft transit repository', () => {
     expect(await repository.findAircraft('acf_missing')).toBeNull();
   });
 
+  it('returns the stored report when the same job saves again', async () => {
+    const report = await buildReport(await createJob());
+
+    const first = await repository.saveReport(report);
+    const second = await repository.saveReport(report);
+
+    expect(second).toEqual(first);
+    const { rows } = await pool.query<{ count: string }>(
+      'SELECT count(*) FROM aircraft_transit_reports WHERE job_id = $1',
+      [report.jobId],
+    );
+    expect(rows[0]?.count).toBe('1');
+  });
+
   it('saves a report and finds it with joined airports and aircraft', async () => {
     const airports = await repository.findAirports(['RJTT', 'KSFO']);
     const origin = required(airports.find((airport) => airport.icao === 'RJTT'));
@@ -61,6 +110,7 @@ describe('drizzle aircraft transit repository', () => {
       aircraftId: aircraft.id,
       departureAt,
       destinationIcao: destination.icao,
+      jobId: await createJob(),
       originIcao: origin.icao,
     });
     const found = await repository.findReport(saved.id);

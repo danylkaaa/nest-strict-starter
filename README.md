@@ -28,6 +28,22 @@ curl -X POST http://localhost:3000/api/jobs/email \
 
 The response includes a job ID. Use `GET /api/jobs/:id` for its status and activity; after delivery, its `result.emailId` identifies the sent email. To delay delivery, set `type` to `schedule` and add a future ISO 8601 `startAt`; `DELETE /api/jobs/:id` cancels a pending or scheduled job. Generate a new UUID `idempotencyKey` for each submission; repeating one returns HTTP 409. The worker process logs job pickup and attempt outcomes by job ID.
 
+## Submit a webhook or aircraft report job
+
+Both use the same envelope as the email job (`idempotencyKey`, `type`, `priority`, optional `startAt`) with a different `payload`:
+
+```bash
+curl -X POST http://localhost:3000/api/jobs/webhook \
+  -H 'Content-Type: application/json' \
+  -d '{"idempotencyKey":"0b7d4f52-3c1a-4e63-9d57-1f3a8f0c2b11","type":"instant","priority":3,"payload":{"url":"https://example.com/hook","payload":{"hello":"world"}}}'
+
+curl -X POST http://localhost:3000/api/jobs/aircraft-report \
+  -H 'Content-Type: application/json' \
+  -d '{"idempotencyKey":"5a1c9e07-8d42-4b6f-a3e1-7c2d9b4f6a80","type":"instant","priority":3,"payload":{"originIcao":"RJTT","destinationIcao":"KSFO","aircraftId":"<id from GET /api/aircraft>","departureAt":"2030-01-01T10:00:00Z"}}'
+```
+
+`GET /api/jobs/:id` returns the status, activity, and a `result` of `{ webhookCallId }` or `{ reportId }` once the job completes; `DELETE /api/jobs/:id` cancels a pending or scheduled job. A repeated `idempotencyKey` returns HTTP 409 on every route, and an invalid transit request (unknown airport or aircraft, same airport, past departure) returns HTTP 400. Retried jobs are safe: a webhook is delivered with a per-job key and one report is stored per job. Reset a development database with `docker compose down -v && pnpm run setup`, then `pnpm db:seed`.
+
 ## API Doc
 
 Open [Swagger UI](http://localhost:3000/api/docs) to confirm the API is running.

@@ -11,6 +11,7 @@ const request = {
   aircraftId: AIRCRAFT.id,
   departureAt: new Date(NOW.getTime() + 3_600_000),
   destinationIcao: 'ksfo',
+  jobId: '11111111-1111-4111-8111-111111111111',
   originIcao: 'RJTT',
 };
 
@@ -46,6 +47,7 @@ describe('generateAircraftTransitReportUseCase', () => {
       aircraftId: AIRCRAFT.id,
       destinationIcao: 'KSFO',
       distanceKm: report.distanceKm,
+      jobId: request.jobId,
       originIcao: 'RJTT',
     });
   });

@@ -7,6 +7,8 @@ export default defineConfig({
   test: {
     ...config.test,
     env: { ...config.test?.env, DATABASE_URL: process.env['DATABASE_URL'] ?? '' },
+    // Every suite shares one database and one set of queues, and workers consume any job.
+    fileParallelism: false,
     include: ['src/**/*.e2e-spec.ts'],
   },
 });
