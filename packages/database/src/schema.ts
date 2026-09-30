@@ -35,9 +35,19 @@ export const JOB_QUEUES = ['email', 'webhook', 'aircraft-report'] as const;
 
 export type JobResultValue = { emailId: string } | { webhookCallId: string } | { reportId: string };
 
+export const jobBatches = pgTable('job_batches', {
+  cancellationRequestedAt: timestamp('cancellation_requested_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  id: uuid('id').primaryKey(),
+  idempotencyKey: uuid('idempotency_key').notNull().unique(),
+  startAt: timestamp('start_at', { withTimezone: true }).notNull(),
+});
+
 export const jobs = pgTable(
   'jobs',
   {
+    batchId: uuid('batch_id').references(() => jobBatches.id),
+    batchPosition: integer('batch_position'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     id: uuid('id').primaryKey(),
     idempotencyKey: uuid('idempotency_key').notNull().unique(),
@@ -64,6 +74,15 @@ export const jobs = pgTable(
     check('jobs_type_valid', sql`${table.type} IN ('instant', 'schedule')`),
     index('jobs_status_start_at_idx').on(table.status, table.startAt),
     index('jobs_created_at_id_idx').on(table.createdAt.desc(), table.id.desc()),
+    check(
+      'jobs_batch_position_pair',
+      sql`(${table.batchId} IS NULL) = (${table.batchPosition} IS NULL)`,
+    ),
+    check(
+      'jobs_batch_position_nonnegative',
+      sql`${table.batchPosition} IS NULL OR ${table.batchPosition} >= 0`,
+    ),
+    uniqueIndex('jobs_batch_id_batch_position_idx').on(table.batchId, table.batchPosition),
   ],
 );
 

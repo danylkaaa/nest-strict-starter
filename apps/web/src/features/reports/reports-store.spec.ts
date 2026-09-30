@@ -17,6 +17,19 @@ describe('useReportsStore', () => {
     expect(useReportsStore.getState()).toMatchObject({ page: 1, search: 'LHR' });
   });
 
+  it('opens one row at a time and collapses it on a page or filter change', () => {
+    useReportsStore.getState().toggleExpanded('a');
+    useReportsStore.getState().toggleExpanded('b');
+    expect(useReportsStore.getState().expandedId).toBe('b');
+
+    useReportsStore.getState().toggleExpanded('b');
+    expect(useReportsStore.getState().expandedId).toBeNull();
+
+    useReportsStore.getState().toggleExpanded('a');
+    useReportsStore.getState().setPage(2);
+    expect(useReportsStore.getState().expandedId).toBeNull();
+  });
+
   it('keeps the filters when only the page changes', () => {
     useReportsStore.getState().setSearch('LHR');
     useReportsStore.getState().setPage(2);

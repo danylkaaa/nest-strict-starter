@@ -13,8 +13,8 @@ export const useJobActions = () => {
   const cancelMutation = useCancelJob();
   const retryMutation = useRetryJob();
 
-  const cancel = (job: Pick<Job, 'id'>) => {
-    cancelMutation.mutate(job.id, {
+  const cancel = (job: Pick<Job, 'id' | 'type'>) => {
+    cancelMutation.mutate(job, {
       onError: (error) => {
         toaster.error({ description: errorMessage(error), title: 'Could not cancel job' });
       },

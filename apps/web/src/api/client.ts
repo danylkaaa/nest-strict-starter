@@ -1,13 +1,23 @@
 import { JOB_STATUSES } from '@/features/jobs/job';
-import { mockServer } from '@/mock/runtime';
+import { COARSE_STATUS } from '@/features/jobs/job-rules';
 import { ApiError } from '@/shared/api-error';
 
 import { request } from './http';
-import { QUEUE_BY_JOB_TYPE, toAirport, toTransitReport, toUiJob, toWebhookBody } from './mappers';
+import {
+  QUEUE_BY_JOB_TYPE,
+  toAirport,
+  toTransitReport,
+  toUiBatch,
+  toUiJob,
+  toWebhookBody,
+} from './mappers';
 import {
   apiAircraftListSchema,
   apiAirportsSchema,
+  apiBatchPageSchema,
+  apiBatchSchema,
   apiCancelledJobSchema,
+  apiCreatedBatchSchema,
   apiCreatedJobSchema,
   apiHealthSchema,
   apiJobDetailSchema,
@@ -15,7 +25,7 @@ import {
   apiTransitReportSchema,
 } from './schemas';
 
-import type { ApiJob } from './schemas';
+import type { ApiBatchSummary, ApiJob } from './schemas';
 import type {
   Airport,
   Job,
@@ -31,16 +41,13 @@ import type {
   SentWebhook,
   SubmitJobInput,
   SubmitJobResponse,
+  TaskSpec,
 } from '@/features/jobs/job';
 
-// API client, the only entry point for server data. Email, webhook, and transit jobs are served by
-// the backend REST API. Batch jobs are not built there yet, so they stay in the in-browser mock
-// server (`mock/`); their IDs start with `job_`, which is how calls are routed.
+// API client, the only entry point for server data. Jobs and job batches are served by the backend
+// REST API; a batch has its own endpoints (`/job-batches`) and its own detail route.
 
 const MAX_API_PAGE_SIZE = 100;
-const MOCK_ALL = 1000;
-
-const isMockJobId = (id: string): boolean => id.startsWith('job_');
 
 // --- reference data ---------------------------------------------------------------------------
 
@@ -65,12 +72,20 @@ const loadAirports = (): Promise<Airports> => {
   return airportsRequest;
 };
 
+let aircraftRequest: Promise<string> | undefined;
+
 /** The UI has no aircraft picker, so transit jobs use the first seeded aircraft */
-const loadDefaultAircraftId = async (): Promise<string> => {
-  const { items } = await request(apiAircraftListSchema, '/aircraft');
-  const [first] = items;
-  if (first === undefined) throw new ApiError('NO_AIRCRAFT', 'No aircraft are available');
-  return first.id;
+const loadDefaultAircraftId = (): Promise<string> => {
+  aircraftRequest ??= request(apiAircraftListSchema, '/aircraft').then(({ items }) => {
+    const [first] = items;
+    if (first === undefined) throw new ApiError('NO_AIRCRAFT', 'No aircraft are available');
+    return first.id;
+  });
+  // A failed load must not be cached forever
+  aircraftRequest.catch(() => {
+    aircraftRequest = undefined;
+  });
+  return aircraftRequest;
 };
 
 // --- jobs -------------------------------------------------------------------------------------
@@ -119,14 +134,74 @@ const loadApiJobPrefix = async (
   return { items: items.slice(0, count), total };
 };
 
+// --- batches ----------------------------------------------------------------------------------
+
+const loadBatch = async (id: string): Promise<Job> => {
+  const [batch, airports] = await Promise.all([
+    request(apiBatchSchema, `/job-batches/${id}`),
+    loadAirports(),
+  ]);
+  return toUiBatch(batch, { airports: airports.byIcao, children: batch.items });
+};
+
+const hasBatchFilter = (query: ListJobsQuery): boolean =>
+  query.status !== undefined || (query.search?.trim() ?? '') !== '';
+
+/** The batch list has no filters, so status and search are applied here */
+const matchesBatchQuery = (batch: ApiBatchSummary, query: ListJobsQuery): boolean => {
+  const needle = query.search?.trim().toLowerCase() ?? '';
+  return (
+    (query.status === undefined || COARSE_STATUS[batch.status] === query.status) &&
+    (needle === '' ||
+      batch.id.toLowerCase().includes(needle) ||
+      batch.idempotencyKey.toLowerCase().includes(needle))
+  );
+};
+
+/**
+ * The first `count` batches matching the query, newest first. With a filter the whole list is
+ * read, because the matching batches are not known in advance; without one only the pages that
+ * the requested window needs.
+ */
+const loadBatchPrefix = async (
+  query: ListJobsQuery,
+  count: number,
+): Promise<{ items: ApiBatchSummary[]; total: number }> => {
+  const filtered = hasBatchFilter(query);
+  const items: ApiBatchSummary[] = [];
+  let total = 0;
+  // At least one page is read; later pages only while the window or the filter needs them
+  for (let page = 1; ; page += 1) {
+    const result = await request(apiBatchPageSchema, '/job-batches', {
+      query: { page, pageSize: MAX_API_PAGE_SIZE },
+    });
+    items.push(...result.items.filter((batch) => matchesBatchQuery(batch, query)));
+    total = result.total;
+    if (page >= result.totalPages || (!filtered && items.length >= count)) break;
+  }
+  return { items: items.slice(0, count), total: filtered ? items.length : total };
+};
+
 const newestFirst = (a: Job, b: Job): number =>
   b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
 
 const listJobs = async (query: ListJobsQuery): Promise<Page<Job>> => {
-  if (query.type === 'batch') return mockServer.listJobs(query);
+  const offset = (query.page - 1) * query.pageSize;
+  const window = offset + query.pageSize;
+
+  if (query.type === 'batch') {
+    const batches = await loadBatchPrefix(query, window);
+    return {
+      items: batches.items.slice(offset, window).map((batch) => toUiBatch(batch, {})),
+      page: query.page,
+      pageSize: query.pageSize,
+      total: batches.total,
+      totalPages: Math.max(1, Math.ceil(batches.total / query.pageSize)),
+    };
+  }
+
   const airports = (await loadAirports()).byIcao;
   const toJob = (job: ApiJob) => toUiJob(job, { airports });
-  const offset = (query.page - 1) * query.pageSize;
 
   if (query.type !== undefined) {
     const result = await request(apiJobPageSchema, '/jobs', {
@@ -135,16 +210,20 @@ const listJobs = async (query: ListJobsQuery): Promise<Page<Job>> => {
     return { ...result, items: result.items.map(toJob) };
   }
 
-  // No type filter: merge API jobs with the mocked batches. Both lists are sorted newest first,
-  // so the requested window lies inside the first `offset + pageSize` items of each.
+  // No type filter: merge standalone jobs with batch parents. The API list leaves out batch
+  // children, and both lists are sorted newest first, so the requested window lies inside the
+  // first `offset + pageSize` items of each.
   const [api, batches] = await Promise.all([
-    loadApiJobPrefix(query, offset + query.pageSize),
-    Promise.resolve(mockServer.listJobs({ ...query, page: 1, pageSize: MOCK_ALL, type: 'batch' })),
+    loadApiJobPrefix(query, window),
+    loadBatchPrefix(query, window),
   ]);
-  const merged = [...api.items.map(toJob), ...batches.items].toSorted(newestFirst);
+  const merged = [
+    ...api.items.map(toJob),
+    ...batches.items.map((batch) => toUiBatch(batch, {})),
+  ].toSorted(newestFirst);
   const total = api.total + batches.total;
   return {
-    items: merged.slice(offset, offset + query.pageSize),
+    items: merged.slice(offset, window),
     page: query.page,
     pageSize: query.pageSize,
     total,
@@ -153,7 +232,7 @@ const listJobs = async (query: ListJobsQuery): Promise<Page<Job>> => {
 };
 
 /** Translates the form's payload into the body the queue's endpoint expects */
-const toApiPayload = async (input: Exclude<SubmitJobInput, { type: 'batch' }>) => {
+const toApiPayload = async (input: TaskSpec) => {
   if (input.type === 'email') {
     const { body, subject, to } = input.payload;
     return { body, recipient: to, subject };
@@ -172,20 +251,47 @@ const toApiPayload = async (input: Exclude<SubmitJobInput, { type: 'batch' }>) =
   };
 };
 
-const submitJob = async (input: SubmitJobInput): Promise<SubmitJobResponse> => {
-  if (input.type === 'batch') return mockServer.submitJob(input);
+/** Fields every submission shares: key, limits, and the instant or scheduled start */
+const toEnvelope = (input: SubmitJobInput) => {
   const runAt = input.runAt !== undefined && Date.parse(input.runAt) > Date.now();
-  const envelope = {
+  return {
     idempotencyKey: input.idempotencyKey,
     maxAttempts: input.maxAttempts,
     priority: input.priority,
     ...(runAt ? { startAt: input.runAt } : {}),
     type: runAt ? 'schedule' : 'instant',
   };
+};
+
+const submitBatch = async (
+  input: Extract<SubmitJobInput, { type: 'batch' }>,
+): Promise<SubmitJobResponse> => {
+  const items = await Promise.all(
+    input.payload.items.map(async (task) => ({
+      payload: await toApiPayload(task),
+      type: QUEUE_BY_JOB_TYPE[task.type],
+    })),
+  );
+  try {
+    const created = await request(apiCreatedBatchSchema, '/job-batches', {
+      body: { ...toEnvelope(input), items },
+      method: 'POST',
+    });
+    return { created: true, job: await loadBatch(created.id) };
+  } catch (error) {
+    // A repeated batch key answers with the batch the first submit created
+    if (error instanceof ApiError && error.existingBatchId !== undefined)
+      return { created: false, job: await loadBatch(error.existingBatchId) };
+    throw error;
+  }
+};
+
+const submitJob = async (input: SubmitJobInput): Promise<SubmitJobResponse> => {
+  if (input.type === 'batch') return submitBatch(input);
   const payload = await toApiPayload(input);
   try {
     const created = await request(apiCreatedJobSchema, `/jobs/${QUEUE_BY_JOB_TYPE[input.type]}`, {
-      body: { ...envelope, payload },
+      body: { ...toEnvelope(input), payload },
       method: 'POST',
     });
     return { created: true, job: await loadJob(created.id) };
@@ -307,36 +413,50 @@ const listWebhooks = async (query: ListWebhooksQuery): Promise<Page<SentWebhook>
 const UNHEALTHY_CODES = new Set(['NETWORK_ERROR', 'SERVICE_UNAVAILABLE']);
 
 const getHealth = async (): Promise<QueueHealth> => {
-  const batches = mockServer.getHealth();
   try {
     const health = await request(apiHealthSchema, '/health');
-    const counts = { ...batches.counts };
-    for (const status of JOB_STATUSES) counts[status] += health.counts[status] ?? 0;
-    return { counts, healthy: health.status === 'ok' && batches.healthy };
+    const counts = {
+      cancelled: 0,
+      completed: 0,
+      failed: 0,
+      pending: 0,
+      processing: 0,
+      scheduled: 0,
+    };
+    for (const status of JOB_STATUSES) counts[status] = health.counts[status] ?? 0;
+    return { counts, healthy: health.status === 'ok' };
   } catch (error) {
     if (error instanceof ApiError && UNHEALTHY_CODES.has(error.code))
-      return { counts: batches.counts, healthy: false };
+      return {
+        counts: { cancelled: 0, completed: 0, failed: 0, pending: 0, processing: 0, scheduled: 0 },
+        healthy: false,
+      };
     throw error;
   }
 };
 
 export const api = {
+  // DELETE /api/job-batches/:id
+  cancelBatch: async (id: string): Promise<Job> => {
+    await request(apiBatchSchema, `/job-batches/${id}`, { method: 'DELETE' });
+    return loadBatch(id);
+  },
   // DELETE /api/jobs/:id
   cancelJob: async (id: string): Promise<Job> => {
-    if (isMockJobId(id)) return mockServer.cancelJob(id);
     await request(apiCancelledJobSchema, `/jobs/${id}`, { method: 'DELETE' });
     return loadJob(id);
   },
+  // GET /api/job-batches/:id
+  getBatch: loadBatch,
   // GET /api/health
   getHealth,
   // GET /api/jobs/:id (+ GET /api/aircraft-transit-reports/:id for a finished transit job)
-  getJob: async (id: string): Promise<Job> =>
-    isMockJobId(id) ? mockServer.getJob(id) : loadJob(id),
+  getJob: loadJob,
   // GET /api/airports
   listAirports: async (): Promise<readonly Airport[]> => (await loadAirports()).list,
   // GET /api/jobs?queue=email&status=completed,failed&search=&page=&pageSize=
   listEmails,
-  // GET /api/jobs?queue=&status=&search=&page=&pageSize=
+  // GET /api/jobs?queue=&status=&search=&page=&pageSize= merged with GET /api/job-batches
   listJobs,
   // GET /api/jobs?queue=aircraft-report&status=completed,failed&search=&page=&pageSize=
   listReports,
@@ -344,10 +464,9 @@ export const api = {
   listWebhooks,
   // POST /api/jobs/:id/retry
   retryJob: async (id: string): Promise<Job> => {
-    if (isMockJobId(id)) return mockServer.retryJob(id);
     await request(apiJobDetailSchema, `/jobs/${id}/retry`, { method: 'POST' });
     return loadJob(id);
   },
-  // POST /api/jobs/email | webhook | aircraft-report
+  // POST /api/jobs/email | webhook | aircraft-report, POST /api/job-batches
   submitJob,
 };

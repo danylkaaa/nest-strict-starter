@@ -8,7 +8,9 @@ const timestamp = z.iso.datetime({ offset: true });
 export const errorEnvelopeSchema = z.object({
   error: z.object({
     code: z.string(),
-    details: z.object({ existingJobId: z.string().optional() }).optional(),
+    details: z
+      .object({ existingBatchId: z.string().optional(), existingJobId: z.string().optional() })
+      .optional(),
     message: z.string(),
   }),
   ok: z.literal(false),
@@ -28,6 +30,7 @@ const statusSchema = z.enum([
 
 const jobBase = z.object({
   attempts: z.number().int(),
+  batchId: z.string().nullable(),
   completedAt: timestamp.nullable(),
   createdAt: timestamp,
   id: z.string(),
@@ -111,6 +114,7 @@ export const apiHealthSchema = z.object({
 export const apiCancelledJobSchema = z.object({ id: z.string(), status: z.literal('cancelled') });
 
 export const apiCreatedJobSchema = z.object({ id: z.string(), startAt: timestamp });
+export const apiCreatedBatchSchema = apiCreatedJobSchema;
 
 export const apiAirportsSchema = z.object({
   items: z.array(
@@ -171,3 +175,76 @@ export const apiTransitReportSchema = z.object({
   ),
 });
 export type ApiTransitReport = z.infer<typeof apiTransitReportSchema>;
+
+// --- job batches -------------------------------------------------------------------------------
+
+export const apiBatchStatusSchema = z.enum([
+  'scheduled',
+  'pending',
+  'processing',
+  'cancelling',
+  'cancelled',
+  'completed',
+  'completed_with_errors',
+]);
+export type ApiBatchStatus = z.infer<typeof apiBatchStatusSchema>;
+
+const batchSummaryShape = {
+  cancellationRequestedAt: timestamp.nullable(),
+  counts: z.record(statusSchema, z.number().int()),
+  createdAt: timestamp,
+  id: z.string(),
+  idempotencyKey: z.string(),
+  maxAttempts: z.number().int(),
+  priority: z.number().int(),
+  progress: z.number().int(),
+  startAt: timestamp,
+  status: apiBatchStatusSchema,
+  total: z.number().int(),
+};
+
+export const apiBatchSummarySchema = z.object(batchSummaryShape);
+export type ApiBatchSummary = z.infer<typeof apiBatchSummarySchema>;
+
+const batchChildBase = z.object({
+  attempts: z.number().int(),
+  completedAt: timestamp.nullable(),
+  id: z.string(),
+  lastErrorCategory: z.string().nullable(),
+  link: z.string(),
+  position: z.number().int(),
+  status: statusSchema,
+});
+
+export const apiBatchChildSchema = z.discriminatedUnion('queue', [
+  batchChildBase.extend({
+    payload: emailPayload,
+    queue: z.literal('email'),
+    result: z.object({ emailId: z.string() }).nullable(),
+  }),
+  batchChildBase.extend({
+    payload: webhookPayload,
+    queue: z.literal('webhook'),
+    result: z.object({ webhookCallId: z.string() }).nullable(),
+  }),
+  batchChildBase.extend({
+    payload: transitPayload,
+    queue: z.literal('aircraft-report'),
+    result: z.object({ reportId: z.string() }).nullable(),
+  }),
+]);
+export type ApiBatchChild = z.infer<typeof apiBatchChildSchema>;
+
+export const apiBatchSchema = z.object({
+  ...batchSummaryShape,
+  items: z.array(apiBatchChildSchema),
+});
+export type ApiBatch = z.infer<typeof apiBatchSchema>;
+
+export const apiBatchPageSchema = z.object({
+  items: z.array(apiBatchSummarySchema),
+  page: z.number().int(),
+  pageSize: z.number().int(),
+  total: z.number().int(),
+  totalPages: z.number().int(),
+});

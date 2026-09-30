@@ -30,6 +30,54 @@ describe('job service', () => {
     expect(repository.cancelJob).not.toHaveBeenCalled();
   });
 
+  it('rejects direct cancel and manual retry for a batch child without touching the queue', async () => {
+    const repository = fakeJobRepository();
+    repository.getJob.mockResolvedValue(
+      jobSummary({ batchId: 'b1c0a1d2-0000-4000-8000-000000000001', status: 'failed' }),
+    );
+    const service = new JobService(repository);
+
+    await expect(service.cancel('job-1')).resolves.toBe('not_cancellable');
+    await expect(service.retry('job-1')).resolves.toBe('not_retryable');
+
+    expect(repository.cancelJob).not.toHaveBeenCalled();
+    expect(repository.retryJob).not.toHaveBeenCalled();
+  });
+
+  it('asks the repository to fail a batch child terminally when its batch was cancelled', async () => {
+    const repository = fakeJobRepository();
+    repository.getJob.mockResolvedValue(
+      jobSummary({ batchId: 'b1c0a1d2-0000-4000-8000-000000000001', maxAttempts: 4 }),
+    );
+    repository.writeJobTransition.mockResolvedValue('failed');
+
+    const outcome = await new JobService(repository).recordFailure(
+      'job-1',
+      1,
+      'delivery_failed',
+      false,
+    );
+
+    expect(outcome).toEqual({ terminal: true });
+    expect(repository.writeJobTransition).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({
+        failedAttemptInCancelledBatch: { attempt: 1, category: 'delivery_failed' },
+        status: 'scheduled',
+      }),
+    );
+  });
+
+  it('keeps a batch child retryable when its batch is not cancelled', async () => {
+    const repository = fakeJobRepository();
+    repository.getJob.mockResolvedValue(
+      jobSummary({ batchId: 'b1c0a1d2-0000-4000-8000-000000000001', maxAttempts: 4 }),
+    );
+    await expect(
+      new JobService(repository).recordFailure('job-1', 1, 'delivery_failed', false),
+    ).resolves.toEqual({ terminal: false });
+  });
+
   it('reconciles each processing job in its own queue', async () => {
     const repository = fakeJobRepository();
     repository.listProcessingJobs.mockResolvedValue([

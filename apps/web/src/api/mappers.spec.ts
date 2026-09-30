@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { toAttempts, toTransitReport, toUiJob } from './mappers';
+import { toAttempts, toTransitReport, toUiBatch, toUiJob } from './mappers';
 
-import type { ApiActivity, ApiJob } from './schemas';
+import type { ApiActivity, ApiBatchChild, ApiBatchSummary, ApiJob } from './schemas';
 import type { Airport } from '@/features/jobs/job';
 
 let counter = 0;
@@ -18,6 +18,7 @@ const event = (
 
 const emailJob: ApiJob = {
   attempts: 2,
+  batchId: null,
   completedAt: '2026-10-01T10:05:00.000Z',
   createdAt: '2026-10-01T10:00:00.000Z',
   id: '11111111-1111-4111-8111-111111111111',
@@ -177,5 +178,146 @@ describe('toTransitReport', () => {
 
     expect(report.aircraft).toMatchObject({ cruiseAltitudeFt: 35_000, cruiseSpeedKt: 500 });
     expect(report.path.map((p) => p.fraction)).toEqual([0, 0.5, 1]);
+  });
+});
+
+const batchSummary: ApiBatchSummary = {
+  cancellationRequestedAt: null,
+  counts: { cancelled: 0, completed: 1, failed: 1, pending: 0, processing: 1, scheduled: 0 },
+  createdAt: '2026-10-01T10:00:00.000Z',
+  id: '44444444-4444-4444-8444-444444444444',
+  idempotencyKey: '55555555-5555-4555-8555-555555555555',
+  maxAttempts: 3,
+  priority: 2,
+  progress: 67,
+  startAt: '2026-10-01T10:00:00.000Z',
+  status: 'processing',
+  total: 3,
+};
+
+const child = (
+  id: string,
+  status: ApiBatchChild['status'],
+  completedAt: string | null = null,
+): Extract<ApiBatchChild, { queue: 'email' }> => ({
+  attempts: 1,
+  completedAt,
+  id,
+  lastErrorCategory: null,
+  link: `/api/jobs/${id}`,
+  payload: { body: 'Hello', recipient: 'a@example.com', subject: 'Hi' },
+  position: 1,
+  queue: 'email',
+  result: null,
+  status,
+});
+
+const transitChild: ApiBatchChild = {
+  attempts: 0,
+  completedAt: null,
+  id: 'a',
+  lastErrorCategory: null,
+  link: '/api/jobs/a',
+  payload: {
+    aircraftId: 'acf_1',
+    departureAt: '2026-10-03T12:00:00.000Z',
+    destinationIcao: 'EGLL',
+    originIcao: 'KJFK',
+  },
+  position: 1,
+  queue: 'aircraft-report',
+  result: null,
+  status: 'pending',
+};
+
+describe('toUiBatch', () => {
+  it('maps a batch detail to the job contract with children in order', () => {
+    const batch = toUiBatch(batchSummary, {
+      airports,
+      children: [
+        { ...child('a', 'completed', '2026-10-01T10:00:05.000Z'), result: { emailId: 'eml_1' } },
+        child('b', 'failed', '2026-10-01T10:00:09.000Z'),
+        child('c', 'processing'),
+      ],
+    });
+
+    expect(batch).toMatchObject({
+      batchChildIds: ['a', 'b', 'c'],
+      batchId: null,
+      batchItems: ['done', 'failed', 'running'],
+      batchStatus: 'processing',
+      completedAt: null,
+      maxAttempts: 3,
+      priority: 2,
+      progress: 67,
+      result: null,
+      runAt: null,
+      status: 'processing',
+      type: 'batch',
+    });
+    expect(batch).toHaveProperty('payload.items.length', 3);
+  });
+
+  it('shows cancelled tasks and a cancelling batch as processing in filters', () => {
+    const batch = toUiBatch(
+      { ...batchSummary, status: 'cancelling' },
+      {
+        children: [child('a', 'cancelled'), child('b', 'processing')],
+      },
+    );
+
+    expect(batch).toMatchObject({
+      batchItems: ['cancelled', 'running'],
+      batchStatus: 'cancelling',
+      status: 'processing',
+    });
+  });
+
+  it('summarizes a finished batch and takes its completion from the last child', () => {
+    const batch = toUiBatch(
+      {
+        ...batchSummary,
+        counts: { cancelled: 1, completed: 1, failed: 1, pending: 0, processing: 0, scheduled: 0 },
+        progress: 100,
+        status: 'completed_with_errors',
+      },
+      {
+        children: [
+          child('a', 'completed', '2026-10-01T10:00:05.000Z'),
+          child('b', 'failed', '2026-10-01T10:00:09.000Z'),
+          child('c', 'cancelled', '2026-10-01T10:00:07.000Z'),
+        ],
+      },
+    );
+
+    expect(batch).toMatchObject({
+      completedAt: '2026-10-01T10:00:09.000Z',
+      result: { cancelled: 1, failed: 1, processed: 3, succeeded: 1 },
+      status: 'failed',
+    });
+  });
+
+  it('shows a scheduled start and needs no children for a list row', () => {
+    const batch = toUiBatch(
+      { ...batchSummary, startAt: '2026-10-01T12:00:00.000Z', status: 'scheduled' },
+      {},
+    );
+
+    expect(batch).toMatchObject({
+      batchItems: [],
+      runAt: '2026-10-01T12:00:00.000Z',
+      status: 'scheduled',
+    });
+  });
+
+  it('shows a transit task with IATA codes', () => {
+    const batch = toUiBatch(batchSummary, {
+      airports,
+      children: [transitChild],
+    });
+
+    expect(batch).toMatchObject({
+      payload: { items: [{ payload: { destination: 'LHR', origin: 'JFK' }, type: 'transit' }] },
+    });
   });
 });

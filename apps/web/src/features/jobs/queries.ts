@@ -3,7 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '@/api/client';
 import { ApiError } from '@/shared/api-error';
 
-import type { ListJobsQuery, SubmitJobInput } from './job';
+import type { Job, ListJobsQuery, SubmitJobInput } from './job';
 
 // The design promises data "refreshed every second"
 export const LIVE_REFRESH_MS = 1000;
@@ -25,6 +25,14 @@ export const useJob = (id: string) =>
     retry: (count, error) => !(error instanceof ApiError) && count < 3,
   });
 
+export const useBatch = (id: string) =>
+  useQuery({
+    queryFn: () => api.getBatch(id),
+    queryKey: ['batch', id],
+    refetchInterval: LIVE_REFRESH_MS,
+    retry: (count, error) => !(error instanceof ApiError) && count < 3,
+  });
+
 export const useHealth = () =>
   useQuery({ queryFn: api.getHealth, queryKey: ['health'], refetchInterval: LIVE_REFRESH_MS });
 
@@ -35,7 +43,7 @@ const useInvalidateJobs = () => {
   const queryClient = useQueryClient();
   return () =>
     Promise.all(
-      ['jobs', 'job', 'health', 'emails', 'webhooks', 'reports'].map((key) =>
+      ['jobs', 'job', 'batch', 'health', 'emails', 'webhooks', 'reports'].map((key) =>
         queryClient.invalidateQueries({ queryKey: [key] }),
       ),
     );
@@ -51,7 +59,12 @@ export const useSubmitJob = () => {
 
 export const useCancelJob = () => {
   const invalidate = useInvalidateJobs();
-  return useMutation({ mutationFn: api.cancelJob, onSuccess: invalidate });
+  return useMutation({
+    // A batch is cancelled through its own endpoint; the job endpoint refuses batch children
+    mutationFn: (job: Pick<Job, 'id' | 'type'>) =>
+      job.type === 'batch' ? api.cancelBatch(job.id) : api.cancelJob(job.id),
+    onSuccess: invalidate,
+  });
 };
 
 export const useRetryJob = () => {

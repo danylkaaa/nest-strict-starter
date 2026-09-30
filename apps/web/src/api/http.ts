@@ -44,7 +44,7 @@ export const request = async <Schema extends z.ZodType>(
   const failure = errorEnvelopeSchema.safeParse(json);
   if (failure.success) {
     const { code, details, message } = failure.data.error;
-    throw new ApiError(code, message, details?.existingJobId);
+    throw new ApiError(code, message, details?.existingJobId, details?.existingBatchId);
   }
   const envelope = z.object({ data: z.unknown(), ok: z.literal(true) }).safeParse(json);
   const parsed = envelope.success ? schema.safeParse(envelope.data.data) : undefined;

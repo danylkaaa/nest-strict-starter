@@ -10,16 +10,16 @@ export const ResultView = ({ job }: { job: Job }) => {
   if (job.type === 'transit') return null;
   if (job.type === 'batch') {
     return (
-      <Panel title="Summary on completion">
+      <Panel title="Summary">
         {job.result === null ? (
-          <Text color="fg.muted">Available when the batch finishes.</Text>
+          <Text color="fg.muted">Available when every task is finished.</Text>
         ) : (
           <KeyValueList
             items={[
               { label: 'Processed', value: job.result.processed },
               { label: 'Succeeded', value: job.result.succeeded },
               { label: 'Failed', value: job.result.failed },
-              { label: 'Duration', value: `${(job.result.durationMs / 1000).toFixed(1)} s` },
+              { label: 'Cancelled', value: job.result.cancelled },
             ]}
           />
         )}

@@ -1,4 +1,4 @@
-// Job contract shared by the UI and the mock server. Mirrors the planned backend API responses.
+// Job contract shared by the UI and the API mappers. Mirrors the backend API responses.
 
 export const JOB_TYPES = ['email', 'webhook', 'transit', 'batch'] as const;
 export type JobType = (typeof JOB_TYPES)[number];
@@ -12,6 +12,24 @@ export const JOB_STATUSES = [
   'cancelled',
 ] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
+
+/**
+ * Status of a batch parent, derived by the backend from its children. It differs from a child's
+ * job status: `completed_with_errors` and `cancelling` exist only for batches.
+ */
+export const BATCH_STATUSES = [
+  'scheduled',
+  'pending',
+  'processing',
+  'cancelling',
+  'cancelled',
+  'completed',
+  'completed_with_errors',
+] as const;
+export type BatchStatus = (typeof BATCH_STATUSES)[number];
+
+/** What a status badge can show: a job status or a batch-only status */
+export type DisplayStatus = BatchStatus | JobStatus;
 
 export type LogLevel = 'error' | 'info' | 'warning';
 
@@ -106,18 +124,21 @@ export interface TransitReport {
   path: PathPoint[];
 }
 
+/** Child outcomes of a finished batch; `processed` counts every child that reached a final state */
 export interface BatchResult {
-  durationMs: number;
+  cancelled: number;
   failed: number;
   processed: number;
   succeeded: number;
 }
 
-export type BatchItemStatus = 'done' | 'failed' | 'queued' | 'running';
+export type BatchItemStatus = 'cancelled' | 'done' | 'failed' | 'queued' | 'running';
 
 interface JobBase {
   attemptHistory: JobAttempt[];
   attempts: number;
+  /** Set on a child of a batch, which is managed through its batch */
+  batchId: string | null;
   completedAt: string | null;
   createdAt: string;
   error: string | null;
@@ -136,7 +157,11 @@ interface JobBase {
 export type Job = JobBase &
   (
     | {
+        /** Child job IDs in submission order, parallel to `batchItems` and `payload.items` */
+        batchChildIds: string[];
         batchItems: BatchItemStatus[];
+        /** Exact batch status; `status` is its coarse job-status equivalent for filters */
+        batchStatus: BatchStatus;
         payload: BatchPayload;
         result: BatchResult | null;
         type: 'batch';

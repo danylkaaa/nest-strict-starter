@@ -14,6 +14,8 @@ export class JobService {
   async cancel(id: string): Promise<'cancelled' | 'not_found' | 'not_cancellable'> {
     const row = await this.repository.getJob(id);
     if (!row) return 'not_found';
+    // A batch child is cancelled only through its batch, which owns the retry and race rules.
+    if (row.batchId !== null) return 'not_cancellable';
     return this.repository.cancelJob(row.queue, id);
   }
 
@@ -24,7 +26,7 @@ export class JobService {
   async retry(id: string): Promise<'retried' | 'not_found' | 'not_retryable'> {
     const job = await this.get(id);
     if (!job) return 'not_found';
-    if (job.status !== 'failed') return 'not_retryable';
+    if (job.batchId !== null || job.status !== 'failed') return 'not_retryable';
     return this.repository.retryJob(job.queue, id);
   }
 
@@ -124,11 +126,17 @@ export class JobService {
         event: 'failed',
         eventKey: `failed:${attempt}`,
       });
-    await this.repository.writeJobTransition(id, {
+    // A batch child must not be retried once its batch is cancelled. The repository decides that
+    // under the job row lock (the cancellation holds the same lock), so the stored status and
+    // the settle result the handler derives from `terminal` agree with the lowered queue limit.
+    const written = await this.repository.writeJobTransition(id, {
+      ...(!terminal && (row?.batchId ?? null) !== null
+        ? { failedAttemptInCancelledBatch: { attempt, category } }
+        : {}),
       logs,
       status: terminal ? 'failed' : 'scheduled',
     });
-    return { terminal };
+    return { terminal: written === 'failed' };
   }
 
   async recordCompletion(id: string, attempt: number, result: JobResult): Promise<void> {

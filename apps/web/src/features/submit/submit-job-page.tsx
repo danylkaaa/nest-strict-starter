@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 
 import { JOB_TYPES } from '@/features/jobs/job';
+import { jobPath } from '@/features/jobs/job-rules';
 import { useAirports, useSubmitJob } from '@/features/jobs/queries';
 import { ApiError } from '@/shared/api-error';
 import { Breadcrumbs } from '@/shared/ui/breadcrumbs';
@@ -86,7 +87,7 @@ export const SubmitJobPage = () => {
             title: `Returned existing ${job.id}`,
           });
         }
-        void navigate(`/jobs/${job.id}`);
+        void navigate(jobPath(job));
       },
     });
   };

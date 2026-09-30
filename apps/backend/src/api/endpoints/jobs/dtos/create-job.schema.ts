@@ -2,6 +2,27 @@ import { z } from 'zod';
 
 import { DEFAULT_MAX_ATTEMPTS, MAX_ATTEMPTS_LIMIT } from '@/common/queue/retry-policy.js';
 
+/** Scheduled submissions need `startAt`; instant ones forbid it. Shared by jobs and batches. */
+export const refineSchedule = (
+  value: { startAt?: string | undefined; type: 'instant' | 'schedule' },
+  context: z.RefinementCtx,
+): void => {
+  if (value.type === 'schedule' && value.startAt === undefined) {
+    context.addIssue({
+      code: 'custom',
+      message: 'startAt is required for scheduled jobs.',
+      path: ['startAt'],
+    });
+  }
+  if (value.type === 'instant' && value.startAt !== undefined) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Instant jobs cannot have startAt.',
+      path: ['startAt'],
+    });
+  }
+};
+
 /**
  * Submission envelope shared by every queue: the payload schema is the only part that differs.
  * The submission key must be a UUID, scheduled jobs need `startAt`, and instant jobs forbid it.
@@ -16,19 +37,4 @@ export const createJobSchema = <TPayload extends z.ZodType>(payload: TPayload) =
       startAt: z.iso.datetime({ offset: true }).optional(),
       type: z.enum(['instant', 'schedule']),
     })
-    .superRefine((value, context) => {
-      if (value.type === 'schedule' && value.startAt === undefined) {
-        context.addIssue({
-          code: 'custom',
-          message: 'startAt is required for scheduled jobs.',
-          path: ['startAt'],
-        });
-      }
-      if (value.type === 'instant' && value.startAt !== undefined) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Instant jobs cannot have startAt.',
-          path: ['startAt'],
-        });
-      }
-    });
+    .superRefine(refineSchedule);

@@ -10,6 +10,7 @@ export const JobStatusSchema = z.enum(JOB_STATUSES);
 /** Fields shared by a list item and the single-job response. */
 export const JobSummarySchema = z.object({
   attempts: z.number().int(),
+  batchId: z.uuid().nullable(),
   completedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   id: z.uuid(),
@@ -32,6 +33,7 @@ export const JobSummarySchema = z.object({
 
 export const toJobSummaryResponse = (job: JobSummary): z.input<typeof JobSummarySchema> => ({
   attempts: job.attempts,
+  batchId: job.batchId,
   completedAt: job.completedAt?.toISOString() ?? null,
   createdAt: job.createdAt.toISOString(),
   id: job.id,

@@ -7,7 +7,6 @@ import { between, pick, randomId } from './random';
 
 import type { Random } from './random';
 import type {
-  BatchItemStatus,
   Job,
   JobStatus,
   ListEmailsQuery,
@@ -23,13 +22,17 @@ import type {
   TransitReport,
 } from '@/features/jobs/job';
 
-// In-browser stand-in for the API + worker processes until the backend exists.
-// State is mutable on purpose: this is the simulated infrastructure, not UI code.
+// In-browser stand-in for the API + worker processes for standalone jobs. The app no longer
+// starts it (email, webhook, and transit jobs and batches come from the backend); it is kept with
+// its tests until those mocks are replaced. State is mutable on purpose: this is simulated
+// infrastructure, not UI code.
+
+/** The mock simulates standalone jobs only; batches are real backend resources */
+type TaskJob = Exclude<Job, { type: 'batch' }>;
+type TaskInput = Exclude<SubmitJobInput, { type: 'batch' }>;
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const WEBHOOK_FAILURE_RATE = 0.2;
-const BATCH_CONCURRENCY = 3;
-const MAX_BATCH_ITEMS = 100;
 const BOUNCE_DOMAIN = '@bounce.test';
 // Demo hook: a webhook URL ending in /503 always fails, so retries can be shown on demand
 const FAILING_WEBHOOK_SUFFIX = '/503';
@@ -45,7 +48,7 @@ const MAX_BACKOFF_MS = 30_000;
 export const backoffMs = (attempt: number): number =>
   BACKOFF_SCHEDULE_MS[attempt - 1] ?? MAX_BACKOFF_MS;
 
-const DURATION_MS: Record<Exclude<Job['type'], 'batch'>, [number, number]> = {
+const DURATION_MS: Record<TaskJob['type'], [number, number]> = {
   email: [1000, 3000],
   transit: [2000, 4000],
   webhook: [1000, 2000],
@@ -67,34 +70,14 @@ const taskProblem = (task: TaskSpec): string | null => {
   return origin === destination ? 'Origin and destination must differ' : null;
 };
 
-const validate = (input: SubmitJobInput) => {
-  if (input.type !== 'batch') {
-    const problem = taskProblem(input);
-    if (problem !== null) throw new ApiError('VALIDATION_FAILED', problem);
-    return;
-  }
-  const { items } = input.payload;
-  if (items.length === 0 || items.length > MAX_BATCH_ITEMS) {
-    throw new ApiError('VALIDATION_FAILED', `Batch needs 1 to ${MAX_BATCH_ITEMS} tasks`);
-  }
-  items.forEach((task, index) => {
-    const problem = taskProblem(task);
-    if (problem !== null) throw new ApiError('VALIDATION_FAILED', `Task ${index + 1}: ${problem}`);
-  });
+const validate = (input: TaskInput) => {
+  const problem = taskProblem(input);
+  if (problem !== null) throw new ApiError('VALIDATION_FAILED', problem);
 };
 
-type JobBase = Omit<Job, 'batchItems' | 'payload' | 'result' | 'type'>;
+type JobBase = Omit<TaskJob, 'payload' | 'result' | 'type'>;
 
-const withSpec = (base: JobBase, input: SubmitJobInput): Job => {
-  if (input.type === 'batch') {
-    return {
-      ...base,
-      batchItems: input.payload.items.map(() => 'queued' as const),
-      payload: input.payload,
-      result: null,
-      type: 'batch',
-    };
-  }
+const withSpec = (base: JobBase, input: TaskInput): TaskJob => {
   if (input.type === 'email')
     return { ...base, payload: input.payload, result: null, type: 'email' };
   if (input.type === 'webhook') {
@@ -112,7 +95,7 @@ export interface MockServerOptions {
 export type MockServer = ReturnType<typeof createMockServer>;
 
 export const createMockServer = ({ now, random, workers }: MockServerOptions) => {
-  const jobs = new Map<string, Job>();
+  const jobs = new Map<string, TaskJob>();
   const finishAt = new Map<string, number>();
   const iso = () => new Date(now()).toISOString();
   let created = 0;
@@ -123,17 +106,17 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     return `job_${randomId(random, '', 1)}${hash}`;
   };
 
-  const log = (job: Job, level: LogLevel, message: string) => {
+  const log = (job: TaskJob, level: LogLevel, message: string) => {
     job.logs.push({ at: iso(), level, message });
   };
 
-  const findJob = (id: string): Job => {
+  const findJob = (id: string): TaskJob => {
     const job = jobs.get(id);
     if (job === undefined) throw new ApiError('NOT_FOUND', `Job ${id} not found`);
     return job;
   };
 
-  const submitJob = (input: SubmitJobInput): SubmitJobResponse => {
+  const submitJob = (input: TaskInput): SubmitJobResponse => {
     if (input.idempotencyKey !== undefined && input.idempotencyKey !== '') {
       const existing = [...jobs.values()].find(
         (job) => job.idempotencyKey === input.idempotencyKey,
@@ -145,6 +128,7 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     const base = {
       attemptHistory: [],
       attempts: 0,
+      batchId: null,
       completedAt: null,
       createdAt: iso(),
       error: null,
@@ -199,7 +183,7 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     return { code: 200, result: transitReport(task.payload) };
   };
 
-  const closeAttempt = (job: Job, outcome: number | null, next: string | null) => {
+  const closeAttempt = (job: TaskJob, outcome: number | null, next: string | null) => {
     const attempt = job.attemptHistory.at(-1);
     if (attempt === undefined || attempt.finishedAt !== null) return;
     attempt.finishedAt = iso();
@@ -207,7 +191,7 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     attempt.next = next;
   };
 
-  const complete = (job: Job, result: unknown) => {
+  const complete = (job: TaskJob, result: unknown) => {
     closeAttempt(job, 200, null);
     job.status = 'completed';
     // The handler produced the result for this job's own type
@@ -219,7 +203,7 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     log(job, 'info', 'Job completed');
   };
 
-  const fail = (job: Job, code: number, error: string) => {
+  const fail = (job: TaskJob, code: number, error: string) => {
     const attempt = job.attemptHistory.at(-1)!;
     attempt.finishedAt = iso();
     attempt.outcome = code;
@@ -241,47 +225,10 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     log(job, 'info', 'Job marked failed');
   };
 
-  const batchSummary = (job: Extract<Job, { type: 'batch' }>) => {
-    const count = (status: BatchItemStatus) =>
-      job.batchItems.filter((item) => item === status).length;
-    return {
-      durationMs: now() - Date.parse(job.startedAt!),
-      failed: count('failed'),
-      processed: count('done') + count('failed'),
-      succeeded: count('done'),
-    };
-  };
-
-  const advanceBatch = (job: Extract<Job, { type: 'batch' }>) => {
-    const total = job.batchItems.length;
-    const before = job.batchItems.filter((item) => item === 'done' || item === 'failed').length;
-    job.batchItems = job.batchItems.map((item, index) => {
-      if (item !== 'running') return item;
-      const task = job.payload.items[index]!;
-      const outcome = runHandler(task);
-      if (outcome.error === undefined) return 'done';
-      log(job, 'warning', `Task ${index + 1} (${task.type}) failed: ${outcome.error}`);
-      return 'failed';
-    });
-    let started = 0;
-    job.batchItems = job.batchItems.map((item) => {
-      if (item !== 'queued' || started >= BATCH_CONCURRENCY) return item;
-      started += 1;
-      return 'running';
-    });
-    const handled = job.batchItems.filter((item) => item === 'done' || item === 'failed').length;
-    job.progress = Math.round((handled / total) * 100);
-    const quarter = Math.ceil(total / 4);
-    if (Math.floor(handled / quarter) > Math.floor(before / quarter) && handled < total) {
-      log(job, 'info', `Processed ${handled}/${total} items`);
-    }
-    if (handled === total) complete(job, batchSummary(job));
-  };
-
   const busyWorkers = () =>
     new Set([...jobs.values()].map((job) => job.workerId).filter((id) => id !== null));
 
-  const pickUp = (job: Job) => {
+  const pickUp = (job: TaskJob) => {
     const busy = busyWorkers();
     const workerId = Array.from({ length: workers }, (_, index) => `worker-${index + 1}`).find(
       (id) => !busy.has(id),
@@ -299,10 +246,6 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
       startedAt: iso(),
     });
     log(job, 'info', `Picked up by ${workerId} (attempt ${job.attempts} of ${job.maxAttempts})`);
-    if (job.type === 'batch') {
-      advanceBatch(job);
-      return;
-    }
     const [min, max] = DURATION_MS[job.type];
     finishAt.set(job.id, now() + between(random, min, max));
   };
@@ -317,10 +260,6 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     }
     for (const job of all) {
       if (job.status !== 'processing') continue;
-      if (job.type === 'batch') {
-        advanceBatch(job);
-        continue;
-      }
       if ((finishAt.get(job.id) ?? Infinity) > now()) continue;
       const outcome = runHandler(job);
       if (outcome.error === undefined) {
@@ -339,19 +278,10 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     for (const job of queue.slice(0, Math.max(0, free))) pickUp(job);
   };
 
-  const cancelJob = (id: string): Job => {
+  const cancelJob = (id: string): TaskJob => {
     const job = findJob(id);
-    const cancellable =
-      job.status === 'scheduled' ||
-      job.status === 'pending' ||
-      (job.status === 'processing' && job.type === 'batch');
-    if (!cancellable) {
+    if (job.status !== 'scheduled' && job.status !== 'pending') {
       throw new ApiError('INVALID_STATE', `Cannot cancel a ${job.status} job`);
-    }
-    if (job.type === 'batch' && job.status === 'processing') {
-      job.batchItems = job.batchItems.map((item) => (item === 'running' ? 'done' : item));
-      job.result = batchSummary(job);
-      closeAttempt(job, null, 'cancelled');
     }
     job.status = 'cancelled';
     job.workerId = null;
@@ -360,7 +290,7 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     return job;
   };
 
-  const retryJob = (id: string): Job => {
+  const retryJob = (id: string): TaskJob => {
     const job = findJob(id);
     if (job.status !== 'failed') {
       throw new ApiError(
@@ -373,12 +303,11 @@ export const createMockServer = ({ now, random, workers }: MockServerOptions) =>
     job.error = null;
     job.completedAt = null;
     job.progress = 0;
-    if (job.type === 'batch') job.batchItems = job.batchItems.map(() => 'queued');
     log(job, 'info', 'Manual retry requested');
     return job;
   };
 
-  const listJobs = ({ search, status, type, ...page }: ListJobsQuery): Page<Job> => {
+  const listJobs = ({ search, status, type, ...page }: ListJobsQuery): Page<TaskJob> => {
     const needle = search?.trim().toLowerCase() ?? '';
     const matches = [...jobs.values()]
       .filter(

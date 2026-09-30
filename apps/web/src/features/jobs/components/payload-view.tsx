@@ -1,4 +1,5 @@
-import { Box, Stack, Text } from '@chakra-ui/react';
+import { Box, Link, Stack, Text } from '@chakra-ui/react';
+import { Link as RouterLink } from 'react-router';
 
 import { TYPE_LABEL } from '@/features/jobs/job-rules';
 import { useAirports } from '@/features/jobs/queries';
@@ -40,6 +41,13 @@ export const PayloadView = ({ job }: { job: Job }) => {
                 {' '}
                 · {job.batchItems[index]}
               </Text>
+            )}
+            {job.batchChildIds[index] !== undefined && (
+              <Link asChild color="blue.600" fontFamily="mono" fontSize="xs" ms="3">
+                <RouterLink to={`/jobs/${job.batchChildIds[index]}`}>
+                  {job.batchChildIds[index]}
+                </RouterLink>
+              </Link>
             )}
           </Text>
           <Stack gap="3">

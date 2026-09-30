@@ -14,6 +14,7 @@ import { AircraftApiModule } from './endpoints/aircraft/aircraft.module.js';
 import { AirportsApiModule } from './endpoints/airports/airports.module.js';
 import { EmailsApiModule } from './endpoints/emails/emails.module.js';
 import { HealthApiModule } from './endpoints/health/health.module.js';
+import { JobBatchesApiModule } from './endpoints/job-batches/job-batches.module.js';
 import { JobsApiModule } from './endpoints/jobs/jobs.module.js';
 
 @Module({
@@ -39,6 +40,7 @@ import { JobsApiModule } from './endpoints/jobs/jobs.module.js';
     AircraftApiModule,
     AircraftTransitReportsApiModule,
     JobsApiModule,
+    JobBatchesApiModule,
     HealthApiModule,
   ],
 })

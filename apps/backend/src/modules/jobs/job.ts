@@ -40,6 +40,8 @@ export interface JobActivity {
 /** A job row with the figures the UI lists; `status` is the effective status. */
 export interface JobSummary {
   id: string;
+  /** Batch the job belongs to, or null for a standalone job. */
+  batchId: string | null;
   queue: QueueName;
   status: JobStatus;
   priority: number;

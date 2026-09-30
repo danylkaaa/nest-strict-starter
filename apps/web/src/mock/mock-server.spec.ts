@@ -15,9 +15,6 @@ const webhook: SubmitJobInput = {
   type: 'webhook',
 };
 
-const emailTask = { payload: email.payload, type: 'email' } as const;
-const tasks = (count: number) => Array.from({ length: count }, () => emailTask);
-
 let now = 0;
 let randomValue = 0.5;
 let server: MockServer;
@@ -66,33 +63,6 @@ describe('mock server', () => {
 
       expect(second).toEqual({ created: false, job: first.job });
       expect(server.listJobs({ page: 1, pageSize: 10 }).total).toBe(1);
-    });
-
-    it('rejects an empty batch', () => {
-      expect(() => server.submitJob({ payload: { items: [] }, type: 'batch' })).toThrow(
-        expect.objectContaining({ code: 'VALIDATION_FAILED' }),
-      );
-    });
-
-    it('rejects a batch with an invalid task', () => {
-      expect(() =>
-        server.submitJob({
-          payload: {
-            items: [
-              emailTask,
-              {
-                payload: {
-                  departureAt: '2026-10-03T09:00:00.000Z',
-                  destination: 'XXX',
-                  origin: 'JFK',
-                },
-                type: 'transit',
-              },
-            ],
-          },
-          type: 'batch',
-        }),
-      ).toThrow(expect.objectContaining({ message: 'Task 2: Unknown airport code' }));
     });
 
     it('rejects a transit report for an unknown airport', () => {
@@ -158,55 +128,6 @@ describe('mock server', () => {
       ]);
     });
 
-    it('processes batch items and completes with a summary', () => {
-      const { job } = server.submitJob({ payload: { items: tasks(6) }, type: 'batch' });
-
-      advance(2000);
-      const running = server.getJob(job.id);
-      expect(running.status).toBe('processing');
-      expect(running.progress).toBeGreaterThan(0);
-      expect(running.progress).toBeLessThan(100);
-
-      advance(10_000);
-      const done = server.getJob(job.id);
-      expect(done).toMatchObject({
-        progress: 100,
-        result: { failed: 0, processed: 6, succeeded: 6 },
-        status: 'completed',
-      });
-      expect(done.attemptHistory).toEqual([
-        expect.objectContaining({ finishedAt: expect.any(String), outcome: 200 }),
-      ]);
-    });
-
-    it('runs each batch task with its own type handler', () => {
-      const { job } = server.submitJob({
-        payload: {
-          items: [
-            emailTask,
-            {
-              payload: { body: {}, method: 'POST', url: 'https://httpstat.us/503' },
-              type: 'webhook',
-            },
-            { payload: { ...email.payload, to: 'ghost@bounce.test' }, type: 'email' },
-          ],
-        },
-        type: 'batch',
-      });
-
-      advance(5000);
-      const done = server.getJob(job.id);
-
-      expect(done).toMatchObject({
-        batchItems: ['done', 'failed', 'failed'],
-        result: { failed: 2, processed: 3, succeeded: 1 },
-        status: 'completed',
-      });
-      expect(done.logs.map((entry) => entry.message)).toContain(
-        'Task 2 (webhook) failed: Webhook returned 503 Service Unavailable',
-      );
-    });
-
     it('builds a transit report with a great-circle path', () => {
       const { job } = server.submitJob({
         payload: { departureAt: '2026-10-03T09:00:00.000Z', destination: 'LHR', origin: 'JFK' },
@@ -235,20 +156,6 @@ describe('mock server', () => {
       expect(server.cancelJob(job.id).status).toBe('cancelled');
       advance(5000);
       expect(server.getJob(job.id).status).toBe('cancelled');
-    });
-
-    it('closes the running attempt when a processing batch is cancelled', () => {
-      const { job } = server.submitJob({ payload: { items: tasks(30) }, type: 'batch' });
-      advance(2000);
-
-      const cancelled = server.cancelJob(job.id);
-
-      expect(cancelled.status).toBe('cancelled');
-      expect(cancelled.attemptHistory[0]).toMatchObject({
-        finishedAt: expect.any(String),
-        next: 'cancelled',
-        outcome: null,
-      });
     });
 
     it('refuses to cancel a completed job', () => {

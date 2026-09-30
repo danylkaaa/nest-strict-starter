@@ -1,12 +1,25 @@
-import type { ApiActivity, ApiJob, ApiTransitReport, Queue } from './schemas';
+import { COARSE_STATUS } from '@/features/jobs/job-rules';
+
+import type {
+  ApiActivity,
+  ApiBatchChild,
+  ApiBatchSummary,
+  ApiJob,
+  ApiTransitReport,
+  Queue,
+} from './schemas';
 import type {
   Aircraft,
   Airport,
+  BatchItemStatus,
+  BatchStatus,
   Job,
   JobAttempt,
   JobLog,
+  JobStatus,
   JobType,
   PathPoint,
+  TaskSpec,
   TransitReport,
 } from '@/features/jobs/job';
 
@@ -140,10 +153,43 @@ const INSTANT_TOLERANCE_MS = 1000;
 const toRunAt = (job: ApiJob): string | null =>
   Date.parse(job.startAt) - Date.parse(job.createdAt) > INSTANT_TOLERANCE_MS ? job.startAt : null;
 
+type AirportsByIcao = ReadonlyMap<string, Airport>;
+
+const toEmailPayload = (payload: { body: string; recipient: string; subject: string }) => ({
+  body: payload.body,
+  subject: payload.subject,
+  to: payload.recipient,
+});
+
+const toTransitPayload = (
+  payload: { departureAt: string; destinationIcao: string; originIcao: string },
+  airports: AirportsByIcao,
+) => ({
+  departureAt: payload.departureAt,
+  destination: airports.get(payload.destinationIcao.toUpperCase())?.code ?? payload.destinationIcao,
+  origin: airports.get(payload.originIcao.toUpperCase())?.code ?? payload.originIcao,
+});
+
+/** The submit-form task an API job or batch child stands for, to show its payload read-only */
+export const toTaskSpec = (job: ApiBatchChild | ApiJob, airports: AirportsByIcao): TaskSpec => {
+  if (job.queue === 'email') return { payload: toEmailPayload(job.payload), type: 'email' };
+  if (job.queue === 'webhook') {
+    return {
+      payload: {
+        body: toWebhookBody(job.payload.payload),
+        method: job.payload.method,
+        url: job.payload.url,
+      },
+      type: 'webhook',
+    };
+  }
+  return { payload: toTransitPayload(job.payload, airports), type: 'transit' };
+};
+
 export interface JobContext {
   activity?: readonly ApiActivity[];
   /** ICAO code to airport, to show transit routes with the IATA codes the UI uses */
-  airports: ReadonlyMap<string, Airport>;
+  airports: AirportsByIcao;
   report?: TransitReport | null;
 }
 
@@ -154,6 +200,7 @@ export const toUiJob = (
   const base = {
     attemptHistory: toAttempts(activity),
     attempts: job.attempts,
+    batchId: job.batchId,
     completedAt: job.completedAt,
     createdAt: job.createdAt,
     error:
@@ -174,7 +221,7 @@ export const toUiJob = (
   if (job.queue === 'email') {
     return {
       ...base,
-      payload: { body: job.payload.body, subject: job.payload.subject, to: job.payload.recipient },
+      payload: toEmailPayload(job.payload),
       result: job.result === null ? null : { messageId: job.result.emailId },
       type: 'email',
     };
@@ -192,15 +239,82 @@ export const toUiJob = (
       type: 'webhook',
     };
   }
-  const { departureAt, destinationIcao, originIcao } = job.payload;
   return {
     ...base,
-    payload: {
-      departureAt,
-      destination: airports.get(destinationIcao.toUpperCase())?.code ?? destinationIcao,
-      origin: airports.get(originIcao.toUpperCase())?.code ?? originIcao,
-    },
+    payload: toTransitPayload(job.payload, airports),
     result: report,
     type: 'transit',
+  };
+};
+
+const BATCH_ITEM_STATUS: Record<JobStatus, BatchItemStatus> = {
+  cancelled: 'cancelled',
+  completed: 'done',
+  failed: 'failed',
+  pending: 'queued',
+  processing: 'running',
+  scheduled: 'queued',
+};
+
+const FINISHED_BATCH_STATUSES = new Set<BatchStatus>([
+  'cancelled',
+  'completed',
+  'completed_with_errors',
+]);
+
+export interface BatchContext {
+  /** Needed only to show the children's transit routes */
+  airports?: AirportsByIcao;
+  /** The batch's children in submission order; a list row has none */
+  children?: readonly ApiBatchChild[];
+}
+
+/** The newest completion time among the children, once all are finished */
+const latestCompletion = (children: readonly ApiBatchChild[]): string | null =>
+  children
+    .map((child) => child.completedAt)
+    .filter((at) => at !== null)
+    .toSorted()
+    .at(-1) ?? null;
+
+export const toUiBatch = (
+  batch: ApiBatchSummary,
+  { airports = new Map(), children = [] }: BatchContext,
+): Job => {
+  const finished = FINISHED_BATCH_STATUSES.has(batch.status);
+  const counts = (status: JobStatus) => batch.counts[status] ?? 0;
+  return {
+    attemptHistory: [],
+    attempts: 0,
+    batchChildIds: children.map((child) => child.id),
+    batchId: null,
+    batchItems: children.map((child) => BATCH_ITEM_STATUS[child.status]),
+    batchStatus: batch.status,
+    completedAt: finished ? latestCompletion(children) : null,
+    createdAt: batch.createdAt,
+    error: null,
+    id: batch.id,
+    idempotencyKey: batch.idempotencyKey,
+    logs: [],
+    maxAttempts: batch.maxAttempts,
+    payload: { items: children.map((child) => toTaskSpec(child, airports)) },
+    priority: batch.priority,
+    progress: batch.progress,
+    result: finished
+      ? {
+          cancelled: counts('cancelled'),
+          failed: counts('failed'),
+          processed: counts('completed') + counts('failed') + counts('cancelled'),
+          succeeded: counts('completed'),
+        }
+      : null,
+    runAt:
+      Date.parse(batch.startAt) - Date.parse(batch.createdAt) > INSTANT_TOLERANCE_MS
+        ? batch.startAt
+        : null,
+    startedAt: null,
+    status: COARSE_STATUS[batch.status],
+    type: 'batch',
+    workerId: null,
   };
 };

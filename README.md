@@ -7,14 +7,12 @@ NestJS backend and Drizzle database package in a pnpm + Turbo monorepo.
 ```bash
 pnpm install
 pnpm run setup
-pnpm db:seed
 pnpm run dev
 ```
 
 1. `pnpm install` installs workspace dependencies. Use this command, not `pnpm run install`.
-2. `pnpm run setup` copies `.env.example` to the root `.env` when missing, derives `DATABASE_URL` from its PostgreSQL settings, starts PostgreSQL, waits for it to be healthy, applies the Drizzle migrations, and creates or upgrades the pg-boss schema. You can run it again after pulling new migrations.
-3. `pnpm db:seed` fills the `airports` and `aircraft` reference tables (safe to re-run).
-4. `pnpm run dev` starts the backend API, two queue workers, and the database package's build watcher. The backend uses port 3000 unless `http__port` in `.env` changes it. Stop the development processes with Ctrl+C.
+2. `pnpm run setup` copies `.env.example` to the root `.env` when missing, derives `DATABASE_URL` from its PostgreSQL settings, starts PostgreSQL, waits for it to be healthy, applies the Drizzle and pg-boss migrations, and seeds the `airports` and `aircraft` reference tables. You can run it again after pulling new migrations; seeding is safe to repeat.
+3. `pnpm run dev` starts the backend API, two queue workers, and the database package's build watcher. The backend uses port 3000 unless `http__port` in `.env` changes it. Stop the development processes with Ctrl+C.
 
 The API enqueues jobs; the two dev workers deliver them (`pnpm --filter backend worker:dev` starts one extra). For a production build, run `pnpm build` and then `pnpm --filter backend worker:start` in the worker process.
 
@@ -47,9 +45,8 @@ The normal `test` scripts run `*.spec.ts` files. `pnpm check` also runs unit tes
 
 ### E2E and database integration tests
 
-1. Run `pnpm run setup` to start PostgreSQL and apply the Drizzle and queue migrations.
-2. Run `pnpm db:seed` to load the airport and aircraft data used by the integration suite.
-3. Stop `pnpm dev` or any other worker using this database, then run:
+1. Run `pnpm run setup` to start PostgreSQL, apply the Drizzle and queue migrations, and seed airport and aircraft data.
+2. Stop `pnpm dev` or any other worker using this database, then run:
 
 ```bash
 DATABASE_URL="$(sed -n 's/^DATABASE_URL=//p' .env)" pnpm --filter backend test:integration
@@ -81,7 +78,7 @@ curl -X POST http://localhost:3000/api/jobs/aircraft-report \
   -d '{"idempotencyKey":"5a1c9e07-8d42-4b6f-a3e1-7c2d9b4f6a80","type":"instant","priority":3,"payload":{"originIcao":"RJTT","destinationIcao":"KSFO","aircraftId":"<id from GET /api/aircraft>","departureAt":"2030-01-01T10:00:00Z"}}'
 ```
 
-`GET /api/jobs/:id` returns the status, activity, and a `result` of `{ webhookCallId }` or `{ reportId }` once the job completes; `DELETE /api/jobs/:id` cancels a pending or scheduled job. A repeated `idempotencyKey` returns HTTP 409 on every route, and an invalid transit request (unknown airport or aircraft, same airport, past departure) returns HTTP 400. Retried jobs are safe: a webhook is delivered with a per-job key and one report is stored per job. Reset a development database with `docker compose down -v && pnpm run setup`, then `pnpm db:seed`.
+`GET /api/jobs/:id` returns the status, activity, and a `result` of `{ webhookCallId }` or `{ reportId }` once the job completes; `DELETE /api/jobs/:id` cancels a pending or scheduled job. A repeated `idempotencyKey` returns HTTP 409 on every route, and an invalid transit request (unknown airport or aircraft, same airport, past departure) returns HTTP 400. Retried jobs are safe: a webhook is delivered with a per-job key and one report is stored per job. Reset a development database with `docker compose down -v && pnpm run setup`.
 
 ## Manage jobs
 
@@ -96,6 +93,25 @@ curl -X POST http://localhost:3000/api/jobs/aircraft-report \
 | `GET /api/aircraft-transit-reports/:id` | The generated report (`reportId` in an aircraft report job's `result`) with its waypoints.                                                                                                                                                                                                            |
 
 Every submission accepts an optional `maxAttempts` (1-10, default 4); a failed attempt is retried after 5 s, then 10 s, then 30 s for every later attempt; a webhook `payload` accepts an optional `method` (`POST` or `PUT`, default `POST`, stored but not sent by the mock). A repeated `idempotencyKey` returns HTTP 409 with `error.details.existingJobId`. Mock webhook delivery fails randomly on one in three attempts, regardless of URL. To demo email retries, use a recipient ending in `@bounce.test`: the mock email client always fails those.
+
+## Job batches
+
+A batch creates 1-100 child jobs (email, webhook, or aircraft report) that share one schedule, priority, and attempt limit. Children are ordinary jobs on the existing queues and run on the existing workers; there is no parent queue job.
+
+```bash
+curl -X POST http://localhost:3000/api/job-batches \
+  -H 'Content-Type: application/json' \
+  -d '{"idempotencyKey":"8f14e45f-ceea-4e67-a1b4-0c1d2e3f4a5b","type":"instant","priority":3,"maxAttempts":4,"items":[{"type":"email","payload":{"recipient":"person@example.com","subject":"Hi","body":"Hello"}},{"type":"webhook","payload":{"url":"https://example.com/hook","payload":{"hello":"world"}}}]}'
+```
+
+| Endpoint                      | Purpose                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/job-batches`       | HTTP 202 with the batch `id` and `startAt`. Body: `{ idempotencyKey, type, startAt?, priority, maxAttempts, items: [{ type, payload }] }`. A repeated batch key returns 409 with `details.existingBatchId`; an invalid child returns 400 with `details.position` (1-based). Creation is atomic: no child exists unless every child was enqueued. |
+| `GET /api/job-batches`        | Paged list (`page`, `pageSize` 1-100), newest first, with derived status, counts, and progress.                                                                                                                                                                                                                                                  |
+| `GET /api/job-batches/:id`    | The batch and its children in submission order (ID, position, queue, status, result, link to `GET /api/jobs/:id`).                                                                                                                                                                                                                               |
+| `DELETE /api/job-batches/:id` | Records the cancellation request and cancels every unclaimed child; a running child finishes or fails but is not retried. Repeating it returns the batch unchanged; 404 unknown, 409 when every child finished and the batch was never cancelled.                                                                                                |
+
+Batch status is derived from its children when read and is not the same as a child job status: `scheduled`, `pending`, `processing`, `completed`, `completed_with_errors` (a child failed or was cancelled on its own), `cancelling` (cancellation requested, a child still running), and `cancelled`. `progress` is `round(100 * (completed + failed + cancelled) / total)`; a processing child does not count. `GET /api/jobs` lists standalone jobs only: batch children are left out (read them through the batch or by ID), and the single-job cancel and retry endpoints return 409 for a child. `GET /api/jobs/stats` and `GET /api/health` still count every execution job, children included, never the batch parents.
 
 ## API Doc
 

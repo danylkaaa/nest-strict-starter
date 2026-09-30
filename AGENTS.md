@@ -38,7 +38,7 @@ Run from the repo root:
 
 ```bash
 pnpm install
-pnpm run setup      # copy root .env if missing, start PostgreSQL, apply Drizzle and pg-boss migrations
+pnpm run setup      # copy root .env if missing, start PostgreSQL, migrate, and seed reference data
 pnpm dev            # API on :3000
 pnpm check          # typecheck + lint + format:check + deps + test — must be green before finishing
 pnpm format         # auto-format everything
@@ -56,7 +56,7 @@ Single package: `pnpm --filter backend <script>`.
 - Package formatter configs re-export the root `oxfmt.config.ts`; do not fork formatting options per package
 - TypeScript stays on 6.x until Nest CLI supports TypeScript 7 (it needs the compiler API)
 - Config, secrets, and URLs come from environment variables; no hard-coded values. Commit `.env.example`, never `.env`
-- Local backend, database migration, pg-boss migration, and Compose settings use the root `.env`; `scripts/setup.mjs` creates its `DATABASE_URL` from PostgreSQL settings and checks that an existing URL matches. It runs Drizzle migrations followed by the backend-owned pg-boss migration command, so queue tables are ready before API or worker startup. This keeps local connections aligned. The setup command enforces the URL check and migration order; file placement is a convention.
+- Local backend, database migration, pg-boss migration, seed, and Compose settings use the root `.env`; `scripts/setup.mjs` creates its `DATABASE_URL` from PostgreSQL settings and checks that an existing URL matches. It runs Drizzle migrations, the backend-owned pg-boss migration command, then the idempotent reference-data seed, so queues and reference data are ready before API or worker startup. This keeps local connections aligned. The setup command enforces the URL check and operation order; file placement is a convention.
 
 ## Working Principles
 

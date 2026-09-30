@@ -7,6 +7,11 @@ import type { CreateJobInput } from '@/modules/jobs/job.js';
 import type { JobRepository } from '@/modules/jobs/ports/job.repository.js';
 import type { Result } from 'neverthrow';
 
+/** A scheduled submission needs a future `startAt`; instant ones have none to check. */
+export const isValidSchedule = (input: Pick<CreateJobInput, 'startAt' | 'type'>): boolean =>
+  input.type !== 'schedule' ||
+  (input.startAt !== undefined && input.startAt.getTime() > Date.now());
+
 /**
  * Private to the feature: the submission steps every `Create<Queue>JobUseCase` shares. The key
  * check runs before schedule validation so an identical repeat is always a conflict.
@@ -17,8 +22,7 @@ export async function checkSubmission(
 ): Promise<Result<void, JobConflictError | JobScheduleError>> {
   const existingJobId = await repository.findSubmission(input.idempotencyKey);
   if (existingJobId !== null) return err(new JobConflictError(existingJobId));
-  if (input.type === 'schedule' && (!input.startAt || input.startAt.getTime() <= Date.now()))
-    return err(new JobScheduleError());
+  if (!isValidSchedule(input)) return err(new JobScheduleError());
   return ok();
 }
 

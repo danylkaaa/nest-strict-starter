@@ -1,7 +1,7 @@
 import { Box, Button, Link, Table, Text } from '@chakra-ui/react';
 import { Link as RouterLink } from 'react-router';
 
-import { canCancel, canRetry, TYPE_LABEL } from '@/features/jobs/job-rules';
+import { canCancel, canRetry, displayStatus, jobPath, TYPE_LABEL } from '@/features/jobs/job-rules';
 import { useJobActions } from '@/features/jobs/use-job-actions';
 import { formatTime } from '@/shared/format';
 
@@ -47,16 +47,16 @@ export const JobsTable = ({ full = false, jobs }: JobsTableProps) => {
           <Table.Row _hover={{ bg: 'blue.50' }} key={job.id}>
             <Table.Cell ps="5">
               <Link asChild color="blue.600" fontFamily="mono" fontSize="xs">
-                <RouterLink to={`/jobs/${job.id}`}>{job.id}</RouterLink>
+                <RouterLink to={jobPath(job)}>{job.id}</RouterLink>
               </Link>
             </Table.Cell>
             <Table.Cell>{TYPE_LABEL[job.type]}</Table.Cell>
             <Table.Cell>
-              <StatusBadge status={job.status} />
+              <StatusBadge status={displayStatus(job)} />
             </Table.Cell>
             <Table.Cell>{job.priority}</Table.Cell>
             <Table.Cell>
-              {job.attempts}/{job.maxAttempts}
+              {job.type === 'batch' ? '–' : `${job.attempts}/${job.maxAttempts}`}
             </Table.Cell>
             {full && (
               <Table.Cell w="120px">
