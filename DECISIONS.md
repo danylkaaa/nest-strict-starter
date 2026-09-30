@@ -78,6 +78,16 @@
 
 **Trade-offs:** This rewrites migration history. Any other database that already applied the former `users` migration needs a separate reset or migration plan; the local database inspected for this change had no rows or tables to preserve.
 
+## Local setup and environment
+
+**Approach chosen:** Use one root `.env` for Compose, the backend, and database migrations. `pnpm run setup` creates it from `.env.example` when absent, derives `DATABASE_URL` from the local PostgreSQL settings, starts the database, and applies migrations. `pnpm run dev` starts all workspace development processes, including a future UI package.
+
+**Why:** One configuration file avoids copying package-specific environment files and lets the backend and migration tool target the same local database.
+
+**Trade-offs:** The setup script targets a local Compose database and refuses an existing `DATABASE_URL` that differs from its PostgreSQL settings. Other environments can provide variables through their process environment without using the local setup script. Docker is required for the local setup command.
+
+**Rejected:** Separate package `.env` files, because they duplicate the database connection and can drift apart.
+
 ## Job queue decisions to verify
 
 Job pickup, crash recovery, retry backoff, priority, scheduling, and idempotency remain open for the broader task in `docs/task.md`. The email slice does not decide those policies.

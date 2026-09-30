@@ -16,7 +16,8 @@
     "prepare": "husky",
     "commitlint": "commitlint",
     "db:generate": "turbo run db:generate",
-    "db:migrate": "turbo run db:migrate"
+    "db:migrate": "turbo run db:migrate",
+    "setup": "node scripts/setup.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",

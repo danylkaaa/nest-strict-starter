@@ -1,3 +1,5 @@
+import { resolve } from 'node:path';
+
 import { Global, Module } from '@nestjs/common';
 import { ConfigModule as NestConfigModule, registerAs } from '@nestjs/config';
 
@@ -10,6 +12,7 @@ const apiConfiguration = registerAs('config', () => parseApiConfig(process.env))
   exports: [ApiConfig],
   imports: [
     NestConfigModule.forRoot({
+      envFilePath: resolve(process.cwd(), '../../.env'),
       isGlobal: true,
       load: [apiConfiguration],
     }),

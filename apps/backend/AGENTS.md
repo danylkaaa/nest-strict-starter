@@ -69,6 +69,10 @@ Webhook calls require a job ID and append one database record for each completed
 - Document every HTTP endpoint with tags, an operation summary, validated request/query schemas, and success/error envelopes. Use `api/core/swagger/api-envelope-response.ts` with the response Zod DTO’s `.Output` schema so Swagger describes the global envelope rather than the controller’s `Result` wrapper. Reference: `api/endpoints/emails/emails.controller.ts` and `api/endpoints/greeting/greeting.controller.ts`. Coverage is a convention; no machine check enforces it yet.
 - Configure Swagger in `api/core/swagger/swagger.config.ts`, called by `api/main.ts` after the global prefix is set. Run `cleanupOpenApiDoc` after `SwaggerModule.createDocument` for correct Zod schemas. Swagger UI is `/api/docs` and its JSON document is `/api/docs-json`.
 
+## Configuration
+
+- Package commands run from `apps/backend`; `api/core/config/config.module.ts` explicitly loads the repository root `.env` at `../../.env` so the API and database tooling share one environment file. Existing process environment values take precedence over file values. `api/core/config/api.config.ts` maps `DATABASE_URL` to `ApiConfig.postgres.url`, preserving the nested database configuration used by providers; `postgres__url` is a compatibility fallback when `DATABASE_URL` is absent. Other nested settings use double underscores. Zod enforces the parsed configuration shape at startup; environment file placement is a convention.
+
 ## Keeping this guide current
 
 When a change implements a planned pattern or changes one of these seams, update this file in the same change: state the rule, why it exists, its reference implementation, and whether tooling enforces it. Update `/DECISIONS.md` when the choice or trade-off changes. Keep root `AGENTS.md` for cross-package rules only.

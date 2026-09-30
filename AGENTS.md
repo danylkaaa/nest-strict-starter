@@ -37,6 +37,7 @@ Run from the repo root:
 
 ```bash
 pnpm install
+pnpm run setup      # copy root .env if missing, start PostgreSQL, apply migrations
 pnpm dev            # API on :3000
 pnpm check          # typecheck + lint + format:check + deps + test — must be green before finishing
 pnpm format         # auto-format everything
@@ -54,6 +55,7 @@ Single package: `pnpm --filter backend <script>`.
 - Package formatter configs re-export the root `oxfmt.config.ts`; do not fork formatting options per package
 - TypeScript stays on 6.x until Nest CLI supports TypeScript 7 (it needs the compiler API)
 - Config, secrets, and URLs come from environment variables; no hard-coded values. Commit `.env.example`, never `.env`
+- Local backend, database migration, and Compose settings use the root `.env`; `scripts/setup.mjs` creates its `DATABASE_URL` from PostgreSQL settings and checks that an existing URL matches. This keeps local connections aligned. The setup command enforces the URL check; file placement is a convention.
 
 ## Working Principles
 

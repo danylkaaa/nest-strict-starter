@@ -2,16 +2,19 @@
 
 NestJS backend and Drizzle database package in a pnpm + Turbo monorepo.
 
+## Run locally
+
+Requires Node.js 22 or newer, pnpm 10, and Docker with Compose.
+
 ```bash
 pnpm install
-cp .env.example .env
-cp apps/backend/.env.example apps/backend/.env
-cp packages/database/.env.example packages/database/.env
-pnpm check
-pnpm dev
+pnpm run setup
+pnpm run dev
 ```
 
-Set the PostgreSQL URLs in the two package `.env` files to the same database before starting the API or running migrations. Root `.env` holds Compose settings. Run `docker compose up -d --wait`, then `pnpm db:migrate` when a database is needed.
+`setup` copies the root `.env.example` to `.env` if needed, sets `DATABASE_URL` from the PostgreSQL settings, starts PostgreSQL, waits for it to be healthy, and applies migrations. It keeps an existing `.env` and stops if its `DATABASE_URL` points to a different database. Edit the root `.env` to change local credentials or ports; the backend and migration commands use that one file. `pnpm install` is the dependency command; there is no `pnpm run install` script.
+
+`pnpm run dev` starts the backend at `http://localhost:3000` by default. Stop it with Ctrl+C. Turbo also runs the `dev` script of each workspace package, so a future UI package will join the same command. Run `pnpm check` to verify types, lint, formatting, configured dependencies, and existing tests.
 
 ## Current backend layout
 
