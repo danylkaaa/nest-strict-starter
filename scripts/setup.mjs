@@ -77,3 +77,4 @@ const environment = {
 
 run('docker', ['compose', 'up', '-d', '--wait', 'postgres'], environment);
 run('pnpm', ['run', 'db:migrate'], environment);
+run('pnpm', ['--filter', 'backend', 'queue:migrate'], environment);

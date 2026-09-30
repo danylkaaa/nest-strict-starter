@@ -2,6 +2,8 @@ import { getDrizzleToken } from '@nestjs/drizzle';
 import { Test } from '@nestjs/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { QueueService } from '@/common/queue/queue.service.js';
+
 import type { Database } from '@workspace/database/client';
 
 describe('database module', () => {
@@ -14,7 +16,10 @@ describe('database module', () => {
     vi.stubEnv('logger__level', 'silent');
 
     const { AppModule } = await import('@/api/api.module');
-    const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(QueueService)
+      .useValue({})
+      .compile();
     await module.init();
 
     const db = module.get<Database>(getDrizzleToken());

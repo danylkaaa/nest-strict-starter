@@ -4,7 +4,7 @@ pnpm + turbo monorepo with a NestJS backend. Strict lint and format checks are p
 
 Context lives in `AGENTS.md` files (this one at the root, one per package). Claude Code and other agents read them directly; do not add `CLAUDE.md` files.
 
-- Before working in a package, read its `AGENTS.md`: `apps/backend/AGENTS.md`, `packages/database/AGENTS.md`
+- Before working in a package, read its `AGENTS.md`: `apps/backend/AGENTS.md`, `apps/web/AGENTS.md`, `packages/database/AGENTS.md`
 - Tooling config rules load from `.claude/rules/tooling.md` via `paths:` matching
 
 ## Persisting Instructions
@@ -29,6 +29,7 @@ When a change introduces or alters a pattern (error handling, response shape, a 
 ## Layout
 
 - `apps/backend` — NestJS backend with HTTP (`src/api/`), future queue worker (`src/worker/`), business features (`src/modules/`), and shared infrastructure (`src/common/`). Backend ownership and dependencies are defined only in `apps/backend/AGENTS.md`
+- `apps/web` — Job Queue UI: React + Vite SPA (Chakra UI, TanStack Query, zustand, Leaflet), backed by an in-browser mock server until the backend API is ready
 - `packages/database` — shared Drizzle schema, client types, and PostgreSQL migrations
 
 ## Commands
@@ -37,7 +38,7 @@ Run from the repo root:
 
 ```bash
 pnpm install
-pnpm run setup      # copy root .env if missing, start PostgreSQL, apply migrations
+pnpm run setup      # copy root .env if missing, start PostgreSQL, apply Drizzle and pg-boss migrations
 pnpm dev            # API on :3000
 pnpm check          # typecheck + lint + format:check + deps + test — must be green before finishing
 pnpm format         # auto-format everything
@@ -55,7 +56,7 @@ Single package: `pnpm --filter backend <script>`.
 - Package formatter configs re-export the root `oxfmt.config.ts`; do not fork formatting options per package
 - TypeScript stays on 6.x until Nest CLI supports TypeScript 7 (it needs the compiler API)
 - Config, secrets, and URLs come from environment variables; no hard-coded values. Commit `.env.example`, never `.env`
-- Local backend, database migration, and Compose settings use the root `.env`; `scripts/setup.mjs` creates its `DATABASE_URL` from PostgreSQL settings and checks that an existing URL matches. This keeps local connections aligned. The setup command enforces the URL check; file placement is a convention.
+- Local backend, database migration, pg-boss migration, and Compose settings use the root `.env`; `scripts/setup.mjs` creates its `DATABASE_URL` from PostgreSQL settings and checks that an existing URL matches. It runs Drizzle migrations followed by the backend-owned pg-boss migration command, so queue tables are ready before API or worker startup. This keeps local connections aligned. The setup command enforces the URL check and migration order; file placement is a convention.
 
 ## Working Principles
 

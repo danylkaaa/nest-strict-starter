@@ -1,0 +1,67 @@
+{
+  "stage": "interview",
+  "title": "Queued email delivery with pg-boss",
+  "goalSlug": "pg-boss-email-jobs",
+  "questions": [
+    {
+      "id": "api_route",
+      "prompt": "How should clients create email jobs?",
+      "description": "The current POST /api/emails waits for mock delivery and returns a sent email. A separate route can preserve that behavior.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Add POST /api/email-jobs; keep POST /api/emails synchronous. Return the queued job ID and scheduled time with 202 Accepted.",
+      "options": [
+        { "id": "new_route", "label": "Add POST /api/email-jobs; keep current route" },
+        { "id": "replace_route", "label": "Make POST /api/emails queue jobs instead" }
+      ],
+      "recommendedOptionIds": ["new_route"],
+      "required": true
+    },
+    {
+      "id": "retry_policy",
+      "prompt": "Which retry policy should email jobs use after a processing error?",
+      "description": "pg-boss supports retryLimit, retryDelay, and exponential backoff. This applies to failures from validation, delivery, or persistence unless the implementation distinguishes them.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Retry unexpected processing failures up to 3 times, starting after 60 seconds with exponential backoff; reject invalid payloads without retry.",
+      "options": [
+        {
+          "id": "three_backoff",
+          "label": "3 retries, 60-second exponential backoff; invalid payloads fail immediately"
+        },
+        {
+          "id": "three_fixed",
+          "label": "3 retries, fixed 60-second delay; invalid payloads fail immediately"
+        },
+        { "id": "no_retry", "label": "No automatic retries" }
+      ],
+      "recommendedOptionIds": ["three_backoff"],
+      "required": true
+    },
+    {
+      "id": "activity_log",
+      "prompt": "What should the database activity log record?",
+      "description": "The queue stores its own job state. This question defines the application-owned history and whether clients can read it.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Append a row for job creation, each processing start, each failed attempt, and completion or final failure; expose a GET /api/email-jobs/:id endpoint with status and ordered activity.",
+      "options": [
+        { "id": "lifecycle_api", "label": "All lifecycle events, plus status and activity API" },
+        { "id": "lifecycle_db", "label": "All lifecycle events in DB; no read API yet" },
+        { "id": "attempts_db", "label": "One outcome per attempt in DB; no read API yet" }
+      ],
+      "recommendedOptionIds": ["lifecycle_api"],
+      "required": true
+    },
+    {
+      "id": "duplicate_delivery",
+      "prompt": "What delivery guarantee is acceptable when a worker crashes after sending but before recording completion?",
+      "description": "pg-boss can retry a job after a crash. The existing email client and sent-email repository do not support provider-level idempotency.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Accept at-least-once delivery for this first mock-backed implementation; document that a retry can send twice after a crash.",
+      "options": [
+        { "id": "at_least_once", "label": "Accept possible duplicate sends for now" },
+        { "id": "idempotent", "label": "Require deduplication before shipping" }
+      ],
+      "recommendedOptionIds": ["at_least_once"],
+      "required": true
+    }
+  ]
+}

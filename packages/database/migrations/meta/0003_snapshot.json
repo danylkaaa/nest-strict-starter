@@ -1,22 +1,34 @@
 {
-  "id": "e763951b-839f-4a3e-aa9c-11787fe94551",
+  "id": "18370ba8-18b0-40c8-ace2-7390c4bc88d6",
   "prevId": "49b4c047-718d-48fa-b879-65345cc2dea4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.aircraft": {
-      "name": "aircraft",
+    "public.job_activity": {
+      "name": "job_activity",
       "schema": "",
       "columns": {
-        "cruise_altitude_m": {
-          "name": "cruise_altitude_m",
+        "attempt": {
+          "name": "attempt",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_category": {
+          "name": "error_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "cruise_speed_kmh": {
-          "name": "cruise_speed_kmh",
-          "type": "integer",
+        "event_key": {
+          "name": "event_key",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -26,58 +38,98 @@
           "primaryKey": true,
           "notNull": true
         },
-        "model": {
-          "name": "model",
-          "type": "text",
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "registration": {
-          "name": "registration",
-          "type": "text",
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "now()"
         }
       },
-      "indexes": {},
-      "foreignKeys": {},
+      "indexes": {
+        "job_activity_job_id_event_key_idx": {
+          "name": "job_activity_job_id_event_key_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "event_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "job_activity_job_id_id_idx": {
+          "name": "job_activity_job_id_id_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "job_activity_job_id_jobs_id_fk": {
+          "name": "job_activity_job_id_jobs_id_fk",
+          "tableFrom": "job_activity",
+          "tableTo": "jobs",
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "aircraft_registration_unique": {
-          "name": "aircraft_registration_unique",
-          "nullsNotDistinct": false,
-          "columns": ["registration"]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "aircraft_id_format": {
-          "name": "aircraft_id_format",
-          "value": "\"aircraft\".\"id\" ~ '^acf_[0-7][0-9A-HJKMNP-TV-Z]{25}$'"
+        "job_activity_id_format": {
+          "name": "job_activity_id_format",
+          "value": "\"job_activity\".\"id\" ~ '^jac_[0-7][0-9A-HJKMNP-TV-Z]{25}$'"
         },
-        "aircraft_performance_positive": {
-          "name": "aircraft_performance_positive",
-          "value": "\"aircraft\".\"cruise_speed_kmh\" > 0 AND \"aircraft\".\"cruise_altitude_m\" > 0"
+        "job_activity_event_valid": {
+          "name": "job_activity_event_valid",
+          "value": "\"job_activity\".\"event\" IN ('created', 'started', 'attempt_failed', 'cancelled', 'completed', 'failed')"
+        },
+        "job_activity_attempt_positive": {
+          "name": "job_activity_attempt_positive",
+          "value": "\"job_activity\".\"attempt\" IS NULL OR \"job_activity\".\"attempt\" > 0"
         }
       },
       "isRLSEnabled": false
     },
-    "public.aircraft_transit_reports": {
-      "name": "aircraft_transit_reports",
+    "public.jobs": {
+      "name": "jobs",
       "schema": "",
       "columns": {
-        "aircraft_id": {
-          "name": "aircraft_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "arrival_at": {
-          "name": "arrival_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -85,150 +137,101 @@
           "notNull": true,
           "default": "now()"
         },
-        "departure_at": {
-          "name": "departure_at",
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_at": {
+          "name": "start_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
         },
-        "destination_icao": {
-          "name": "destination_icao",
+        "status": {
+          "name": "status",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "distance_km": {
-          "name": "distance_km",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "duration_minutes": {
-          "name": "duration_minutes",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "origin_icao": {
-          "name": "origin_icao",
+        "type": {
+          "name": "type",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "waypoints": {
-          "name": "waypoints",
-          "type": "jsonb",
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "now()"
         }
       },
-      "indexes": {},
-      "foreignKeys": {
-        "aircraft_transit_reports_aircraft_id_aircraft_id_fk": {
-          "name": "aircraft_transit_reports_aircraft_id_aircraft_id_fk",
-          "tableFrom": "aircraft_transit_reports",
-          "tableTo": "aircraft",
-          "columnsFrom": ["aircraft_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "aircraft_transit_reports_destination_icao_airports_icao_fk": {
-          "name": "aircraft_transit_reports_destination_icao_airports_icao_fk",
-          "tableFrom": "aircraft_transit_reports",
-          "tableTo": "airports",
-          "columnsFrom": ["destination_icao"],
-          "columnsTo": ["icao"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "aircraft_transit_reports_origin_icao_airports_icao_fk": {
-          "name": "aircraft_transit_reports_origin_icao_airports_icao_fk",
-          "tableFrom": "aircraft_transit_reports",
-          "tableTo": "airports",
-          "columnsFrom": ["origin_icao"],
-          "columnsTo": ["icao"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+      "indexes": {
+        "jobs_status_start_at_idx": {
+          "name": "jobs_status_start_at_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "start_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "aircraft_transit_reports_id_format": {
-          "name": "aircraft_transit_reports_id_format",
-          "value": "\"aircraft_transit_reports\".\"id\" ~ '^atr_[0-7][0-9A-HJKMNP-TV-Z]{25}$'"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.airports": {
-      "name": "airports",
-      "schema": "",
-      "columns": {
-        "city": {
-          "name": "city",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "country": {
-          "name": "country",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "iata": {
-          "name": "iata",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "icao": {
-          "name": "icao",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "latitude": {
-          "name": "latitude",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "longitude": {
-          "name": "longitude",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "jobs_idempotency_key_unique": {
+          "name": "jobs_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": ["idempotency_key"]
+        }
+      },
       "policies": {},
       "checkConstraints": {
-        "airports_icao_format": {
-          "name": "airports_icao_format",
-          "value": "\"airports\".\"icao\" ~ '^[A-Z]{4}$'"
+        "jobs_priority_range": {
+          "name": "jobs_priority_range",
+          "value": "\"jobs\".\"priority\" BETWEEN 1 AND 5"
         },
-        "airports_coordinates_valid": {
-          "name": "airports_coordinates_valid",
-          "value": "\"airports\".\"latitude\" BETWEEN -90 AND 90 AND \"airports\".\"longitude\" BETWEEN -180 AND 180"
+        "jobs_status_valid": {
+          "name": "jobs_status_valid",
+          "value": "\"jobs\".\"status\" IN ('scheduled', 'pending', 'processing', 'cancelled', 'completed', 'failed')"
+        },
+        "jobs_type_valid": {
+          "name": "jobs_type_valid",
+          "value": "\"jobs\".\"type\" IN ('instant', 'schedule')"
         }
       },
       "isRLSEnabled": false
@@ -242,6 +245,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "delivery_key": {
+          "name": "delivery_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "id": {
           "name": "id",
@@ -278,6 +287,11 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
+        "sent_emails_delivery_key_unique": {
+          "name": "sent_emails_delivery_key_unique",
+          "nullsNotDistinct": false,
+          "columns": ["delivery_key"]
+        },
         "sent_emails_message_id_unique": {
           "name": "sent_emails_message_id_unique",
           "nullsNotDistinct": false,

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { getDrizzleToken } from '@nestjs/drizzle';
 import { sentEmails } from '@workspace/database/schema';
-import { desc, lt } from 'drizzle-orm';
+import { desc, eq, lt } from 'drizzle-orm';
 
 import type { EmailContent, ListSentEmailsInput, SentEmail, SentEmailsPage } from './email.js';
 import type { EmailRepository } from './ports/email.repository.js';
@@ -11,15 +11,25 @@ import type { Database } from '@workspace/database/client';
 export class DrizzleEmailRepository implements EmailRepository {
   constructor(@Inject(getDrizzleToken()) private readonly database: Database) {}
 
-  async save(email: EmailContent & { messageId: string; sentAt: Date }): Promise<SentEmail> {
+  async save(
+    email: EmailContent & { messageId: string; sentAt: Date; deliveryKey?: string },
+  ): Promise<SentEmail> {
     const [saved] = await this.database
       .insert(sentEmails)
       .values(email)
+      .onConflictDoNothing()
       .returning()
       .catch(() => {
         // Drizzle query errors include email parameters; keep them out of application logs.
         throw new Error('Failed to persist sent email.');
       });
+    if (!saved && email.deliveryKey) {
+      const [existing] = await this.database
+        .select()
+        .from(sentEmails)
+        .where(eq(sentEmails.deliveryKey, email.deliveryKey));
+      if (existing) return existing;
+    }
     if (!saved) throw new Error('Sent email insert returned no record.');
     return saved;
   }

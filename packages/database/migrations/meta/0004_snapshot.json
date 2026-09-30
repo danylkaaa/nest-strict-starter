@@ -1,0 +1,648 @@
+{
+  "id": "831eb59a-3d8d-4911-879e-7eee254a9f39",
+  "prevId": "18370ba8-18b0-40c8-ace2-7390c4bc88d6",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.aircraft": {
+      "name": "aircraft",
+      "schema": "",
+      "columns": {
+        "cruise_altitude_m": {
+          "name": "cruise_altitude_m",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cruise_speed_kmh": {
+          "name": "cruise_speed_kmh",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "registration": {
+          "name": "registration",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "aircraft_registration_unique": {
+          "name": "aircraft_registration_unique",
+          "nullsNotDistinct": false,
+          "columns": ["registration"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "aircraft_id_format": {
+          "name": "aircraft_id_format",
+          "value": "\"aircraft\".\"id\" ~ '^acf_[0-7][0-9A-HJKMNP-TV-Z]{25}$'"
+        },
+        "aircraft_performance_positive": {
+          "name": "aircraft_performance_positive",
+          "value": "\"aircraft\".\"cruise_speed_kmh\" > 0 AND \"aircraft\".\"cruise_altitude_m\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.aircraft_transit_reports": {
+      "name": "aircraft_transit_reports",
+      "schema": "",
+      "columns": {
+        "aircraft_id": {
+          "name": "aircraft_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "arrival_at": {
+          "name": "arrival_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "departure_at": {
+          "name": "departure_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destination_icao": {
+          "name": "destination_icao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "distance_km": {
+          "name": "distance_km",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "duration_minutes": {
+          "name": "duration_minutes",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "origin_icao": {
+          "name": "origin_icao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "waypoints": {
+          "name": "waypoints",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "aircraft_transit_reports_aircraft_id_aircraft_id_fk": {
+          "name": "aircraft_transit_reports_aircraft_id_aircraft_id_fk",
+          "tableFrom": "aircraft_transit_reports",
+          "tableTo": "aircraft",
+          "columnsFrom": ["aircraft_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "aircraft_transit_reports_destination_icao_airports_icao_fk": {
+          "name": "aircraft_transit_reports_destination_icao_airports_icao_fk",
+          "tableFrom": "aircraft_transit_reports",
+          "tableTo": "airports",
+          "columnsFrom": ["destination_icao"],
+          "columnsTo": ["icao"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "aircraft_transit_reports_origin_icao_airports_icao_fk": {
+          "name": "aircraft_transit_reports_origin_icao_airports_icao_fk",
+          "tableFrom": "aircraft_transit_reports",
+          "tableTo": "airports",
+          "columnsFrom": ["origin_icao"],
+          "columnsTo": ["icao"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "aircraft_transit_reports_id_format": {
+          "name": "aircraft_transit_reports_id_format",
+          "value": "\"aircraft_transit_reports\".\"id\" ~ '^atr_[0-7][0-9A-HJKMNP-TV-Z]{25}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.airports": {
+      "name": "airports",
+      "schema": "",
+      "columns": {
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "iata": {
+          "name": "iata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icao": {
+          "name": "icao",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "latitude": {
+          "name": "latitude",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "longitude": {
+          "name": "longitude",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "airports_icao_format": {
+          "name": "airports_icao_format",
+          "value": "\"airports\".\"icao\" ~ '^[A-Z]{4}$'"
+        },
+        "airports_coordinates_valid": {
+          "name": "airports_coordinates_valid",
+          "value": "\"airports\".\"latitude\" BETWEEN -90 AND 90 AND \"airports\".\"longitude\" BETWEEN -180 AND 180"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.job_activity": {
+      "name": "job_activity",
+      "schema": "",
+      "columns": {
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_category": {
+          "name": "error_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_key": {
+          "name": "event_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "job_activity_job_id_event_key_idx": {
+          "name": "job_activity_job_id_event_key_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "event_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "job_activity_job_id_id_idx": {
+          "name": "job_activity_job_id_id_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "job_activity_job_id_jobs_id_fk": {
+          "name": "job_activity_job_id_jobs_id_fk",
+          "tableFrom": "job_activity",
+          "tableTo": "jobs",
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "job_activity_id_format": {
+          "name": "job_activity_id_format",
+          "value": "\"job_activity\".\"id\" ~ '^jac_[0-7][0-9A-HJKMNP-TV-Z]{25}$'"
+        },
+        "job_activity_event_valid": {
+          "name": "job_activity_event_valid",
+          "value": "\"job_activity\".\"event\" IN ('created', 'started', 'attempt_failed', 'cancelled', 'completed', 'failed')"
+        },
+        "job_activity_attempt_positive": {
+          "name": "job_activity_attempt_positive",
+          "value": "\"job_activity\".\"attempt\" IS NULL OR \"job_activity\".\"attempt\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.jobs": {
+      "name": "jobs",
+      "schema": "",
+      "columns": {
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_at": {
+          "name": "start_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "jobs_status_start_at_idx": {
+          "name": "jobs_status_start_at_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "start_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "jobs_idempotency_key_unique": {
+          "name": "jobs_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": ["idempotency_key"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "jobs_priority_range": {
+          "name": "jobs_priority_range",
+          "value": "\"jobs\".\"priority\" BETWEEN 1 AND 5"
+        },
+        "jobs_status_valid": {
+          "name": "jobs_status_valid",
+          "value": "\"jobs\".\"status\" IN ('scheduled', 'pending', 'processing', 'cancelled', 'completed', 'failed')"
+        },
+        "jobs_type_valid": {
+          "name": "jobs_type_valid",
+          "value": "\"jobs\".\"type\" IN ('instant', 'schedule')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sent_emails": {
+      "name": "sent_emails",
+      "schema": "",
+      "columns": {
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delivery_key": {
+          "name": "delivery_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipient": {
+          "name": "recipient",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "sent_emails_delivery_key_unique": {
+          "name": "sent_emails_delivery_key_unique",
+          "nullsNotDistinct": false,
+          "columns": ["delivery_key"]
+        },
+        "sent_emails_message_id_unique": {
+          "name": "sent_emails_message_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["message_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "sent_emails_id_format": {
+          "name": "sent_emails_id_format",
+          "value": "\"sent_emails\".\"id\" ~ '^eml_[0-7][0-9A-HJKMNP-TV-Z]{25}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.webhook_calls": {
+      "name": "webhook_calls",
+      "schema": "",
+      "columns": {
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_name": {
+          "name": "error_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "response_value": {
+          "name": "response_value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "webhook_calls_job_id_id_idx": {
+          "name": "webhook_calls_job_id_id_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "webhook_calls_id_format": {
+          "name": "webhook_calls_id_format",
+          "value": "\"webhook_calls\".\"id\" ~ '^whc_[0-7][0-9A-HJKMNP-TV-Z]{25}$'"
+        },
+        "webhook_calls_outcome_valid": {
+          "name": "webhook_calls_outcome_valid",
+          "value": "\"webhook_calls\".\"outcome\" IN ('succeeded', 'failed')"
+        },
+        "webhook_calls_result_consistency": {
+          "name": "webhook_calls_result_consistency",
+          "value": "(\"webhook_calls\".\"outcome\" = 'succeeded' AND \"webhook_calls\".\"request_id\" IS NOT NULL AND \"webhook_calls\".\"response_value\" IS NOT NULL AND \"webhook_calls\".\"response_value\" BETWEEN 0 AND 999999 AND \"webhook_calls\".\"error_name\" IS NULL AND \"webhook_calls\".\"error_message\" IS NULL) OR (\"webhook_calls\".\"outcome\" = 'failed' AND \"webhook_calls\".\"request_id\" IS NULL AND \"webhook_calls\".\"response_value\" IS NULL AND \"webhook_calls\".\"error_name\" IS NOT NULL AND \"webhook_calls\".\"error_message\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

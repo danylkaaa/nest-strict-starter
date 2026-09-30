@@ -1,0 +1,111 @@
+{
+  "stage": "facts",
+  "title": "Queued email delivery with pg-boss",
+  "goalSlug": "pg-boss-email-jobs",
+  "facts": [
+    {
+      "id": "enqueue-api",
+      "text": "POST /api/jobs/email accepts a client-supplied idempotency key, a type of instant or schedule, an email payload validated by the existing email Zod schema, and startAt when type is schedule; it returns HTTP 202 with the job ID and effective start time.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "priority",
+      "text": "POST /api/jobs/email requires an integer priority from 1 through 5, persists it with the job, and passes it to pg-boss so eligible higher-priority email jobs are picked before lower-priority ones; 5 is highest.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "existing-api",
+      "text": "The existing POST /api/emails remains synchronous and keeps its current response behavior.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "scheduling",
+      "text": "An instant email job is eligible immediately; a schedule job is held by pg-boss until its future startAt timestamp. A schedule job without a valid future startAt is rejected.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "worker",
+      "text": "A separately started Nest worker uses a reusable pg-boss module and job-handler decorator to consume email jobs, validates each payload, calls SendEmailUseCase, and completes the job only after successful delivery and persistence.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "retries",
+      "text": "A valid email job has at most four processing attempts: the first attempt and up to three retries, starting 60 seconds after failure with exponential backoff. Invalid queue payloads fail without retry.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "activity",
+      "text": "The application database retains timestamped, ordered activity for job creation, each processing start, each failed attempt, cancellation, successful completion, and final failure, including a safe error category without email body or recipient data.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "read-api",
+      "text": "GET /api/jobs/:id returns an email job's current status (scheduled, pending, processing, cancelled, completed, or failed), scheduled time, and ordered activity, and returns the API's normal not-found error for an unknown ID.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "cancellation",
+      "text": "DELETE /api/jobs/:id cancels a scheduled or pending job and records cancellation activity; a processing, completed, failed, or already cancelled job cannot be cancelled, and an unknown ID returns the API's normal not-found error.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "deduplication",
+      "text": "The client-supplied idempotency key is stored with the application job record and uniquely identifies a submission: repeating the same key and request returns the original job ID, while reusing that key with different job content is rejected.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "delivery-idempotency",
+      "text": "Each email job uses a stable delivery idempotency key distinct from the client submission key. Repeating delivery for the same job after a worker retry or crash cannot produce a second mock delivery or sent-email record; future real email clients must honor the same delivery key.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "operations",
+      "text": "The API and worker run as separate Nest applications. The worker has a documented start command and gracefully closes its pg-boss connection on shutdown; the API can enqueue without starting a consumer.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "quality",
+      "text": "The new API, worker, queue integration, and database schema follow repository ownership rules, include automated tests for accepted behavior, and pass pnpm check.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    }
+  ]
+}
