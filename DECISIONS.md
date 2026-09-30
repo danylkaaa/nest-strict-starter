@@ -127,3 +127,11 @@
 **Trade-offs and items to verify:** Each queue's `work()` registration has its own `localConcurrency` limit (default 1); with multiple queues in one worker process, their limits add up and there is no single process-wide cap. This keeps queue configuration independent but lets queues compete for the process's CPU, memory, and database connections. The JSON result is flexible for later job types but cannot use a foreign key to `sent_emails`; the worker must write the ID returned by the email use case and integration tests must verify it resolves to the sent record. Queue state and application state must be reconciled after a crash between an event write and queue settlement. A local transaction cannot make a future external email provider call exactly once; its API must honor the delivery key. The implementation must verify pg-boss transaction and terminal-failure APIs against the installed release. Priority orders eligible jobs but does not preempt active work.
 
 **Rejected:** Using pg-boss singleton keys as the only idempotency mechanism, because they do not protect an external send after a worker crash; storing only the latest event, because retries need an audit trail.
+
+## Job service and persistence boundary
+
+**Approach chosen:** `JobService` owns queue-state interpretation for reads and interrupted-job reconciliation and attempt lifecycle decisions. The job repository exposes focused storage operations and retains Drizzle queries. Status, result, and activity writes for an attempt remain in one repository transaction. Cancellation stays atomic inside a repository transaction with the pg-boss row lock and queue bridge.
+
+**Why:** Reading queue state and deciding public status or activity are application decisions, while database access belongs in the repository.
+
+**Trade-off:** The service still relies on a repository cancellation operation that combines several writes; splitting those calls across service-level awaits would lose the existing transaction and pickup safety. Queue reconciliation on GET remains best-effort and idempotent through unique event keys.

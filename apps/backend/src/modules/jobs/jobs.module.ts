@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { DrizzleJobRepository } from './job.repository.js';
+import { JobService } from './job.service.js';
 import { JOB_REPOSITORY } from './ports/job.repository.js';
 import { CancelJobUseCase } from './use-case/cancel-job.use-case.js';
 import { CompleteJobUseCase } from './use-case/complete-job.use-case.js';
@@ -21,6 +22,7 @@ import { StartJobAttemptUseCase } from './use-case/start-job-attempt.use-case.js
     ReconcileJobsUseCase,
   ],
   providers: [
+    JobService,
     CreateEmailJobUseCase,
     GetJobUseCase,
     CancelJobUseCase,

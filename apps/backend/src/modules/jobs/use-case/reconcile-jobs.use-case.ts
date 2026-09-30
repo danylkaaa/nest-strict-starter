@@ -1,13 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
-import { JOB_REPOSITORY } from '@/modules/jobs/ports/job.repository.js';
-
-import type { JobRepository } from '@/modules/jobs/ports/job.repository.js';
+import { JobService } from '@/modules/jobs/job.service.js';
 
 @Injectable()
 export class ReconcileJobsUseCase {
-  constructor(@Inject(JOB_REPOSITORY) private readonly repository: JobRepository) {}
+  constructor(private readonly jobs: JobService) {}
   async execute(): Promise<void> {
-    await this.repository.reconcileProcessing();
+    await this.jobs.reconcileProcessing();
   }
 }

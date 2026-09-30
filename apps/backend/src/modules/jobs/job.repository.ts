@@ -9,7 +9,7 @@ import { fromDrizzle } from 'pg-boss';
 import { EMAIL_QUEUE, QueueService } from '@/common/queue/queue.service.js';
 
 import type { CreateEmailJobInput, EmailJob } from './job.js';
-import type { JobRepository } from './ports/job.repository.js';
+import type { JobRepository, JobTransition } from './ports/job.repository.js';
 import type { Database } from '@workspace/database/client';
 
 @Injectable()
@@ -72,45 +72,21 @@ export class DrizzleJobRepository implements JobRepository {
     });
   }
 
-  async get(id: string): Promise<EmailJob | null> {
+  async getJob(id: string): Promise<Omit<EmailJob, 'activity'> | null> {
     const [row] = await this.database.select().from(jobs).where(eq(jobs.id, id));
-    if (!row) return null;
-    const [queued] = await this.queue.boss.findJobs(EMAIL_QUEUE, { id });
-    const status = queued ? this.queueStatus(queued.state, queued.startAfter) : row.status;
-    if (status !== row.status) {
-      await this.database
-        .update(jobs)
-        .set({ status, updatedAt: new Date() })
-        .where(eq(jobs.id, id));
-    }
-    if (queued?.state === 'retry' || queued?.state === 'failed') {
-      const attempt = queued.retryCount + 1;
-      await this.database
-        .insert(jobActivity)
-        .values({
-          attempt,
-          errorCategory: 'worker_interrupted',
-          event: 'attempt_failed',
-          eventKey: `attempt_failed:${attempt}`,
-          jobId: id,
-          recordedAt: sql`clock_timestamp()`,
-        })
-        .onConflictDoNothing();
-      if (queued.state === 'failed') {
-        await this.database
-          .insert(jobActivity)
-          .values({
-            attempt,
-            errorCategory: 'worker_interrupted',
-            event: 'failed',
-            eventKey: 'failed',
-            jobId: id,
-            recordedAt: sql`clock_timestamp()`,
-          })
-          .onConflictDoNothing();
-      }
-    }
-    const activity = await this.database
+    return row
+      ? {
+          id: row.id,
+          priority: row.priority,
+          result: row.result,
+          startAt: row.startAt,
+          status: row.status,
+        }
+      : null;
+  }
+
+  async getJobActivity(id: string): Promise<EmailJob['activity']> {
+    return this.database
       .select({
         attempt: jobActivity.attempt,
         errorCategory: jobActivity.errorCategory,
@@ -121,17 +97,48 @@ export class DrizzleJobRepository implements JobRepository {
       .from(jobActivity)
       .where(eq(jobActivity.jobId, id))
       .orderBy(asc(jobActivity.recordedAt), asc(jobActivity.id));
-    return {
-      activity,
-      id: row.id,
-      priority: row.priority,
-      result: row.result,
-      startAt: row.startAt,
-      status,
-    };
   }
 
-  async cancel(id: string): Promise<'cancelled' | 'not_found' | 'not_cancellable'> {
+  async getQueueJob(
+    id: string,
+  ): Promise<{ state: string; startAfter: Date; retryCount: number } | null> {
+    const [queued] = await this.queue.boss.findJobs(EMAIL_QUEUE, { id });
+    return queued ?? null;
+  }
+
+  async setJobStatus(id: string, status: EmailJob['status']): Promise<void> {
+    await this.database.update(jobs).set({ status, updatedAt: new Date() }).where(eq(jobs.id, id));
+  }
+
+  async addJobLog(
+    id: string,
+    event: EmailJob['activity'][number]['event'],
+    eventKey: string,
+    attempt?: number,
+    errorCategory?: string,
+  ): Promise<void> {
+    await this.database
+      .insert(jobActivity)
+      .values({
+        attempt,
+        errorCategory,
+        event,
+        eventKey,
+        jobId: id,
+        recordedAt: sql`clock_timestamp()`,
+      })
+      .onConflictDoNothing();
+  }
+
+  async listProcessingJobIds(): Promise<string[]> {
+    const rows = await this.database
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(eq(jobs.status, 'processing'));
+    return rows.map((row) => row.id);
+  }
+
+  async cancelJob(id: string): Promise<'cancelled' | 'not_found' | 'not_cancellable'> {
     return this.database.transaction(async (tx) => {
       const [row] = await tx.select().from(jobs).where(eq(jobs.id, id)).for('update');
       if (!row) return 'not_found';
@@ -168,137 +175,26 @@ export class DrizzleJobRepository implements JobRepository {
     });
   }
 
-  private queueStatus(state: string, startAfter: Date): EmailJob['status'] {
-    switch (state) {
-      case 'created':
-      case 'retry':
-        return startAfter.getTime() > Date.now() ? 'scheduled' : 'pending';
-      case 'active':
-        return 'processing';
-      case 'cancelled':
-        return 'cancelled';
-      case 'completed':
-        return 'completed';
-      case 'failed':
-        return 'failed';
-      default:
-        throw new Error('Unknown queue state.');
-    }
-  }
-
-  async recordStart(id: string, attempt: number): Promise<void> {
+  async writeJobTransition(id: string, transition: JobTransition): Promise<void> {
     await this.database.transaction(async (tx) => {
-      for (let previous = 1; previous < attempt; previous++) {
+      await tx
+        .update(jobs)
+        .set({
+          ...(transition.result === undefined ? {} : { result: transition.result }),
+          status: transition.status,
+          updatedAt: new Date(),
+        })
+        .where(eq(jobs.id, id));
+      for (const log of transition.logs) {
         await tx
           .insert(jobActivity)
           .values({
-            attempt: previous,
-            event: 'started',
-            eventKey: `started:${previous}`,
-            jobId: id,
-            recordedAt: sql`clock_timestamp()`,
-          })
-          .onConflictDoNothing();
-        await tx
-          .insert(jobActivity)
-          .values({
-            attempt: previous,
-            errorCategory: 'worker_interrupted',
-            event: 'attempt_failed',
-            eventKey: `attempt_failed:${previous}`,
+            ...log,
             jobId: id,
             recordedAt: sql`clock_timestamp()`,
           })
           .onConflictDoNothing();
       }
-      await tx
-        .update(jobs)
-        .set({ status: 'processing', updatedAt: new Date() })
-        .where(eq(jobs.id, id));
-      await tx
-        .insert(jobActivity)
-        .values({
-          attempt,
-          event: 'started',
-          eventKey: `started:${attempt}`,
-          jobId: id,
-          recordedAt: sql`clock_timestamp()`,
-        })
-        .onConflictDoNothing();
     });
-  }
-
-  async recordFailure(
-    id: string,
-    attempt: number,
-    category: string,
-    terminal: boolean,
-  ): Promise<void> {
-    await this.database.transaction(async (tx) => {
-      await tx
-        .update(jobs)
-        .set({ status: terminal ? 'failed' : 'scheduled', updatedAt: new Date() })
-        .where(eq(jobs.id, id));
-      await tx
-        .insert(jobActivity)
-        .values({
-          attempt,
-          errorCategory: category,
-          event: 'attempt_failed',
-          eventKey: `attempt_failed:${attempt}`,
-          jobId: id,
-          recordedAt: sql`clock_timestamp()`,
-        })
-        .onConflictDoNothing();
-      if (terminal)
-        await tx
-          .insert(jobActivity)
-          .values({
-            attempt,
-            errorCategory: category,
-            event: 'failed',
-            eventKey: 'failed',
-            jobId: id,
-            recordedAt: sql`clock_timestamp()`,
-          })
-          .onConflictDoNothing();
-    });
-  }
-
-  async recordCompletion(id: string, attempt: number, emailId: string): Promise<void> {
-    await this.database.transaction(async (tx) => {
-      await tx
-        .update(jobs)
-        .set({ result: { emailId }, status: 'completed', updatedAt: new Date() })
-        .where(eq(jobs.id, id));
-      await tx
-        .insert(jobActivity)
-        .values({
-          attempt,
-          event: 'completed',
-          eventKey: 'completed',
-          jobId: id,
-          recordedAt: sql`clock_timestamp()`,
-        })
-        .onConflictDoNothing();
-    });
-  }
-
-  async reconcileProcessing(): Promise<void> {
-    const processing = await this.database
-      .select({ id: jobs.id })
-      .from(jobs)
-      .where(eq(jobs.status, 'processing'));
-    for (const row of processing) {
-      const [queued] = await this.queue.boss.findJobs(EMAIL_QUEUE, { id: row.id });
-      if (queued?.state === 'retry' || queued?.state === 'failed') {
-        await this.recordFailure(
-          row.id,
-          queued.retryCount + 1,
-          'worker_interrupted',
-          queued.state === 'failed',
-        );
-      }
-    }
   }
 }
