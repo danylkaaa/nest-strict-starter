@@ -31,7 +31,10 @@ The repo itself is the agents' memory:
 
 ## What I Had to Fix
 
-- **The AI's queue advice was wrong.** The GPT model first suggested Kafka and RabbitMQ. It agreed with whatever I said, but the options did not fit the task. Only during grilling, when I answered its questions and pushed back, did it become clear they did not fit. We ended up with **pg-boss**: concurrency is handled with PostgreSQL transactions and locks at the database level, with no extra infrastructure and no transactional outbox.
+- **The AI's queue advice was wrong.** The GPT model first suggested Kafka and RabbitMQ. It agreed with whatever I said, but the options did not fit the task.
+  - **It always offers the simplest solution.** Without grilling or a problem-hunting skill, that answer is too simple and does not cover the requirements. The person asking must understand the domain.
+  - **Grilling exposed the gap.** We discussed concurrency: how many workers, how many jobs running at once. With Kafka or RabbitMQ, running each job exactly once (idempotency) needs a transactional outbox, because the database and the broker are separate systems and cannot share a transaction.
+  - **Result: pg-boss.** It is simpler to build and maintain, adds no infrastructure, and uses PostgreSQL transactions and locks at the database level, so no outbox is needed.
 - **No suitable starter template.** I spent a long time looking for a starter project that matched the stack and structure. On GitHub they are either too simple or so complex that both Claude and I got lost and could not tell how to write code in them. I picked one template by hand, removed everything unnecessary, kept only the core and the modules we need, and wrote down constraints for Claude so every agent produces the same code structure.
 - **Generated code must always be checked.** Even the reviewer agent missed things. When it happened, I wrote the rule down in `AGENTS.md`. Two examples:
   - Module isolation rules were broken.
