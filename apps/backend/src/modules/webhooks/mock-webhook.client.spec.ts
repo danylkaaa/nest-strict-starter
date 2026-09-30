@@ -23,7 +23,7 @@ const input = {
 } as const;
 
 const stubFailureRoll = (roll: number) => {
-  randomIntMock.mockImplementation((min, max) => (min === 0 && max === 10 ? roll : min));
+  randomIntMock.mockImplementation((min, max) => (min === 0 && max === 3 ? roll : min));
 };
 
 describe('mock webhook client', () => {
@@ -31,7 +31,7 @@ describe('mock webhook client', () => {
     randomIntMock.mockReset();
   });
 
-  it('fails without exposing the URL or payload when the 10% roll hits', async () => {
+  it('fails without exposing the URL or payload when the failure roll hits', async () => {
     stubFailureRoll(0);
     const result = await new MockWebhookClient().call(input);
     expect(setTimeout).toHaveBeenCalledWith(1000);
@@ -40,7 +40,7 @@ describe('mock webhook client', () => {
     expect(JSON.stringify(result)).not.toContain('payload-value');
   });
 
-  it('fails a URL ending in /503 when the 10% roll hits without exposing it', async () => {
+  it('fails a URL ending in /503 when the failure roll hits without exposing it', async () => {
     stubFailureRoll(0);
     const result = await new MockWebhookClient().call({
       ...input,
@@ -50,7 +50,7 @@ describe('mock webhook client', () => {
     expect(JSON.stringify(result)).not.toContain('private');
   });
 
-  it('succeeds for a URL ending in /503 when the 10% roll misses', async () => {
+  it('succeeds for a URL ending in /503 when the failure roll misses', async () => {
     stubFailureRoll(1);
     const result = await new MockWebhookClient().call({
       ...input,
