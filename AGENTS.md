@@ -64,6 +64,7 @@ Single package: `pnpm --filter backend <script>`.
 - MVP-first: build only what the current requirement needs; no speculative layers or config switches
 - Functional-first: prefer pure functions and immutable data; keep side effects in infrastructure
 - Backend HTTP and worker entry points call business use cases in `apps/backend/src/modules/`; see `apps/backend/AGENTS.md` for ownership, DTO, Result, and dependency rules
+- Edit files with the Edit tool (or Write for new files), never with Python, `sed -i`, or other shell scripts run through Bash. Why: a script's `replace()` silently does nothing when the text does not match, while Edit fails loudly and enforces read-before-edit. If Edit fails, re-read the file and fix the `old_string`; do not fall back to a script. Not machine-enforced
 
 ## Implementing Plans and Specs (agents)
 
