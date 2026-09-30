@@ -15,7 +15,7 @@ export class MockWebhookClient implements WebhookClient {
   async call(input: CallWebhookInput): Promise<Result<WebhookReceipt, WebhookDeliveryFailedError>> {
     await setTimeout(randomInt(1000, 2001));
 
-    if (randomInt(0, 10) === 0) {
+    if (randomInt(0, 3) === 0) {
       return err(new WebhookDeliveryFailedError());
     }
 
