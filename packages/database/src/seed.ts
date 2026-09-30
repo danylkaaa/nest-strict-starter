@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 
-import { createDatabase } from './client.js';
+import { createDrizzleInstance } from './client.js';
 import { createDefaultUser } from './default-user.js';
 import { users } from './schema.js';
 
@@ -11,7 +11,7 @@ if (!connectionString) {
 
 const pool = new Pool({ connectionString });
 try {
-  const database = createDatabase(pool);
+  const database = createDrizzleInstance(pool);
   await database
     .insert(users)
     .values(await createDefaultUser())

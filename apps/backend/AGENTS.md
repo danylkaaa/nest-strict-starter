@@ -1,307 +1,63 @@
-# apps/api — NestJS API
+# Backend code generation rules
 
-NestJS API using DDD-style modules. Read the whole file before writing code here. Root rules (monorepo, tooling, git) are in `/AGENTS.md`.
+Read this file before changing `apps/backend`. Root monorepo, quality, and Git rules live in `/AGENTS.md`. This file is the source of truth for backend ownership and dependency direction. Use the current `greeting` code as an example of the existing implementation; follow the **planned** rules below for new features.
 
-## Pattern Index
+## Status and map
 
-Where each pattern lives in code. Copy the reference implementation instead of inventing a variant.
+| Area                     | Owns                                                                                                                                           | Current reference                                           |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `src/api/`               | HTTP application: bootstrap, composition, controllers, HTTP request/response DTOs, validation, authentication, and HTTP error/response mapping | `api/api.module.ts`, `api/endpoints/greeting/`, `api/core/` |
+| `src/worker/`            | Queue application: bootstrap, job consumers, queue payload validation, and job result/error mapping                                            | Planned; no implementation yet                              |
+| `src/modules/<feature>/` | Business capabilities: use cases, business errors, feature-owned repository ports and adapters, and Nest feature wiring                        | `modules/greeting/` is the current small service example    |
+| `src/common/`            | Non-domain infrastructure reusable by the API and worker, such as database connection setup and technical error bases                          | `common/database/`, `common/errors/`                        |
 
-| Pattern                                                | Reference implementation                                                           | Section                           |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------- |
-| Module layout, layers                                  | `src/modules/greeting/`                                                            | Directory Layout                  |
-| Boundary rules                                         | `.dependency-cruiser.mjs`                                                          | Dependency Direction              |
-| Domain error classes                                   | `greeting/domain/greeting.errors.ts`, `src/app/base/domain-error.ts`               | Error Handling                    |
-| Result-returning domain logic                          | `greeting/domain/greeting.ts`                                                      | Error Handling                    |
-| HTTP errors (Nest built-in exceptions)                 | `@nestjs/common` exceptions, `auth/presentation/auth.controller.ts`                | Error Handling                    |
-| Domain error → exception, `Result<Dto, HttpException>` | `greeting/presentation/greeting.controller.ts`                                     | Error Handling                    |
-| Domain error → exception map (`HTTP_EXCEPTION_FOR`)    | `auth/presentation/auth.controller.ts`, `src/app/http/errors/to-http-exception.ts` | Error Handling                    |
-| Zod request/response DTOs                              | `greeting/presentation/dtos/`                                                      | DTOs (zod + nestjs-zod)           |
-| Global validation pipe                                 | `src/app/http/validation/validation.module.ts`                                     | DTOs (zod + nestjs-zod)           |
-| Typed env config (zod)                                 | `src/app/config/`                                                                  | Configuration (nest-typed-config) |
-| Request id + async context                             | `src/app/context/request-context.module.ts`                                        | Logging and Request Context       |
-| Pino logger config                                     | `src/app/logger/logger.config.ts`                                                  | Logging and Request Context       |
-| Scoped logger in a service                             | `greeting/application/services/greeting.service.ts`                                | Logging and Request Context       |
-| Auth: global JWT guard, `@Public()`, `RequestContext`  | `src/app/auth/jwt-auth.guard.ts`, `src/app/http/auth/`, `src/app/http/context/`    | Authentication                    |
-| Token-issuer port (contract) + adapter                 | `src/shared-kernel/auth/token-issuer.port.ts`, `src/app/auth/jwt-token-issuer.ts`  | Authentication                    |
-| Auth module (login, me)                                | `src/modules/auth/`                                                                | Authentication                    |
-| Response envelope                                      | `src/app/http/envelope/`                                                           | Response Envelope                 |
-| Envelope integration test                              | `src/app.module.spec.ts`                                                           | Response Envelope                 |
-| Lint exceptions for Nest                               | `oxlint.config.ts`                                                                 | Nest-Specific Lint Notes          |
+`api/endpoints/<feature>/` always owns HTTP controllers and HTTP DTOs. `modules/<feature>/` owns the corresponding business behavior and errors. There are no feature-specific HTTP controllers or DTOs in `modules/`. A queue consumer belongs to `worker/`, not the feature module.
 
-Rules marked **[enforced]** are checked by `pnpm --filter api deps` (dependency-cruiser, `apps/api/.dependency-cruiser.mjs`) or oxlint. Rules marked **[convention]** are not machine-checked; follow them anyway.
+## Dependency direction
 
-## Directory Layout
-
-```
-apps/api/src/
-├── main.ts / app.module.ts
-├── app/              # Cross-cutting framework code, grouped by concern (see "Structure of app/")
-├── modules/<ctx>/    # Business contexts and operational capabilities
-│   ├── <ctx>.module.ts
-│   ├── domain/           # Pure business logic; aggregates, value objects, events/
-│   ├── application/      # ports/ (interfaces + Symbol tokens), services/
-│   ├── infrastructure/   # repositories/, adapters/ (implement ports)
-│   └── presentation/     # controllers, dtos/ (zod DTO classes)
-└── shared-kernel/    # Pure cross-context contracts
+```text
+api/ ──────┐
+           ├──> modules/ ──> common/
+worker/ ───┘       │
+   │               └──> another module's public use case
+   └─────────────────────> common/
+api/ ────────────────────> common/
 ```
 
-Create a layer folder only when the module needs it (see Progressive Layering). Never add empty layers.
+- `api/` and `worker/` may call use cases in `modules/`, import their public input/result/error types, and use infrastructure in `common/`. They do not import each other.
+- `modules/` may use `common/`, including database infrastructure, but never imports `api/` or `worker/`. Business rules and errors stay in the owning feature.
+- One feature may call another feature's **public use case** and import the types in that use case's interface. Its repository ports, adapters, internal helpers, and Nest providers other than public use cases are private. Nest module imports/exports may wire public use cases for injection. Keep feature dependencies acyclic.
+- `common/` is reusable infrastructure, not a home for business rules. It imports neither an application (`api/`, `worker/`) nor a feature module.
+- Import local files directly; use the `@/` alias across directories and `.js` extensions where NodeNext resolution requires them.
 
-### Structure of `app/`
+These ownership and direction rules are currently **conventions**: the old dependency-cruiser configuration was removed during the refactor, and no replacement boundary check exists yet. Do not describe them as machine-enforced or weaken lint rules to accommodate a violation.
 
-`app/` holds cross-cutting code that belongs to no business module. Group it **by concern**, then by role inside the concern; never dump files flat into a concern folder once it has two roles.
+## Use cases and feature ownership
 
-```
-app/
-├── base/                    # Base classes modules extend (imported by modules)
-│   └── domain-error.ts
-├── auth/                    # JWT guard, JwtModule wiring, token-issuer adapter (wiring only)
-│   ├── jwt-auth.guard.ts
-│   ├── jwt-token-issuer.ts
-│   └── auth-wiring.module.ts
-├── config/                  # Typed, validated env config (wiring only)
-│   ├── app-config.ts        # zod schema + AppConfig token
-│   └── config.module.ts
-├── context/                 # Per-request async context + request id (wiring only)
-│   └── request-context.module.ts
-├── logger/                  # pino logger config + module (wiring only)
-│   ├── logger.config.ts
-│   └── logger.module.ts
-└── http/                    # HTTP concern
-    ├── auth/                # @Public() decorator (imported by presentation/)
-    │   └── public.decorator.ts
-    ├── context/             # RequestContext: the one global per-request context (imported by presentation/)
-    │   └── request-context.ts
-    ├── errors/              # toHttpException: domain error → HttpException (imported by presentation/)
-    │   └── to-http-exception.ts
-    ├── envelope/            # Response envelope: types, interceptor, filter, module (wiring only)
-    └── validation/          # Global ZodValidationPipe module (wiring only)
-```
+**Planned pattern for new work:** create one public use-case class per user or job action, named `<Action>UseCase`, with one `execute(input)` method. The input and output are plain business/application types, not HTTP DTOs or queue messages. Return a `Result` for expected failures. For example, `CreateOrderUseCase.execute(...)` belongs in `modules/order/`; an HTTP controller and a queue consumer may both invoke it.
 
-- **Two kinds of code, two folders**: what modules import (`base/`, `http/auth/`, `http/context/`, `http/errors/`) is separated from wiring only `AppModule` uses (`auth/`, `http/envelope/`, `http/validation/`, `config/`, `context/`, `logger/`). Modules may import only the first kind (enforced)
-- A concern folder gets a `<concern>.module.ts` when it registers providers; `AppModule` imports that module and nothing else from it
-- **[convention]** App-wide operational endpoints live in a small module under `modules/<concern>/`; `modules/health/` is the reference. This keeps each endpoint's controller and DTO together while preserving the `Result` and response envelope rules
-- One concept per file, named after it (`domain-error.ts`, `envelope.filter.ts`, `envelope.interceptor.ts`); specs sit next to the file. No `index.ts` barrels: import the file directly with the `@/` alias
-- Add a new concern folder only when a requirement needs it
+- Keep the action's business sequence in its use case. Controllers adapt HTTP input/output; consumers adapt queue input/output. Neither application duplicates business decisions.
+- A feature that persists data declares its repository port and owns its Drizzle adapter **inside that feature**. `common/database/` supplies the reusable connection and transaction machinery, not feature queries.
+- Feature use cases may use Nest injection and scoped `PinoLogger`, as the current `GreetingService` does. Inject dependencies rather than creating database clients inside a use case.
+- A use case may call another feature's public use case when one business action requires it. Wire the public class through Nest modules and keep the dependency one-way.
+- Add folders inside a feature only when needed. Ports, adapters, and tests stay beside the feature they serve. Tests sit next to their source files.
 
-## Vertical Structure (Modules)
+`modules/greeting/greeting.service.ts` predates the one-class-per-action rule. It demonstrates `Result` behavior and Nest injection; its name and multi-method service style are not templates for new use cases. The worker and repository-adapter examples are still planned, so do not invent a more detailed folder convention until one is implemented and documented here.
 
-The app is split **vertically by capability**, not horizontally by technical layer. A module owns everything for its capability, from the HTTP endpoint down to persistence when needed. `modules/health/` is the operational endpoint reference.
+## Results and errors
 
-- One folder per capability under `src/modules/<ctx>/` (kebab-case, singular noun: `greeting`, `health`, `order`). It contains only the layers it needs (`presentation/`, `application/`, `domain/`, `infrastructure/`) and `<ctx>.module.ts`
-- **MUST NOT create horizontal top-level folders** such as `src/controllers/`, `src/services/`, `src/dtos/`, `src/repositories/`, `src/entities/`, `src/utils/`, `src/common/`. Everything in `src/` is one of: `main.ts`, `app.module.ts`, `app/` (wiring), `modules/`, `shared-kernel/`
-- **A feature change touches one module.** Adding "refunds" means adding or editing `modules/order/` (or a new `modules/refund/`), not a file in every layer folder of the app. If a change needs edits in three modules, the boundaries are probably wrong: stop and ask
-- Each module is registered exactly once, in `AppModule.imports`. Nothing else imports a `*.module.ts` of a module
-- A module exposes only two things to other modules: **ports** (`application/ports/`) and **domain events** (`domain/events/`). Everything else is private (enforced by `no-cross-module`)
-- Tests, DTOs, errors, and mappers live inside the module that owns them, next to the code (`foo.ts` + `foo.spec.ts`)
-- **New module vs extend**: create a new module when the capability has its own vocabulary, data, and rules that other modules would consume through a contract. Extend an existing module when the code shares its aggregate or data. Unsure → ask
-- **Sharing**: do not extract shared code up front. Copy small helpers per module; promote to `shared-kernel/` when the second consumer appears (see shared-kernel Admission). `app/` is wiring, never a home for business helpers
-- Layers inside a module still follow Progressive Layering: start thin, add a layer on a signal. Vertical structure never means "create all four folders for every module"
+- A use case returns `neverthrow` `Result<Success, FeatureError>` for expected business failures. Define each expected error as a class in the owning feature (see `modules/greeting/greeting.errors.ts`). Unexpected defects may throw and are handled by the application entry point.
+- The HTTP controller maps a feature error to an HTTP exception at `api/endpoints/<feature>/`; `api/core/errors/to-http-exception.ts` is the current mapping helper. The API's global envelope lives in `api/core/response-envelope/`.
+- A worker consumer maps the same feature error to the job's retry, failure, or completion behavior in `worker/`. Queue semantics belong to the worker, not the use case.
+- Do not put HTTP status codes, Nest HTTP exceptions, or queue retry decisions in use-case results.
 
-When stuck: about to put a file in a folder named after a technical role at the `src/` level → put it in the owning module instead.
+## HTTP DTOs and validation
 
-## Dependency Direction
+- Define HTTP request and response schemas with Zod and classes with `nestjs-zod` in `api/endpoints/<feature>/dtos/`. See `api/endpoints/greeting/dtos/`.
+- Type decorated controller parameters with the **runtime DTO class**. Nest needs that class in decorator metadata for the global `ZodValidationPipe` in `api/core/validation/validation.module.ts`; a type-only import erases it.
+- The controller passes plain values to a use case, then creates a response DTO from its result. Zod validates transport shape and format; the feature use case decides business rules.
+- HTTP validation failures are mapped by `api/core/response-envelope/` to the API error envelope. Worker payload validation belongs in `worker/` when that application is implemented.
 
-- **[enforced]** No import cycles anywhere (`no-circular`, `import/no-cycle`)
-- **[enforced]** `app/` MUST NOT import `modules/`
-- **[enforced]** `shared-kernel/` MUST NOT import `modules/`
-- **[enforced]** A module MUST NOT import another module, except its `domain/events/` and `application/ports/`
-- **[enforced]** `domain/` MUST NOT import npm packages (no `@nestjs/*`, ORMs, loggers, crypto libs). Exempt: test files and `neverthrow`
-- **[enforced]** `presentation/` MUST NOT import database packages (`@workspace/database`, `drizzle-orm`, `pg`, `postgres`); go through application services
-- **[enforced]** `application/services/` MUST NOT runtime-import `@workspace/database`; type-only imports are allowed
-- **[enforced]** `modules/` MAY import only `app/base/`, `app/http/auth/`, `app/http/context/`, and `app/http/errors/`; all other `app/` code, including `app/http/envelope/`, is wiring (`modules-app-allowlist`)
-- **[enforced]** `modules/` MUST NOT import `nestjs-cls`; controllers read request data through `app/http/context/RequestContext` (`modules-no-cls`)
-- **[enforced]** `modules/` MUST NOT import `@nestjs/jwt`; tokens are issued through the `TOKEN_ISSUER` port (`modules-no-jwt`)
-- **[enforced]** `domain/`, `application/`, `infrastructure/` MUST NOT import `presentation/` (`no-outward-presentation-import`)
-- **[enforced]** `domain/`, `application/`, `infrastructure/` MUST NOT import `app/http/` (`http-errors-presentation-only`)
-- **[enforced]** `domain/`, `application/`, `infrastructure/` MUST NOT import `*Exception` classes from `@nestjs/common`; HTTP exceptions belong to `presentation/` (oxlint `no-restricted-imports` override in `apps/api/oxlint.config.ts`, since dependency-cruiser cannot see `@nestjs/common`)
-- **[convention]** Use the `@/` alias for cross-directory imports; `../` imports are banned by lint. Same-directory `./x.js` is fine
-- Imports of local files use the `.js` extension (NodeNext resolution)
+## Keeping this guide current
 
-## Domain Purity
-
-- Domain code is plain TypeScript: no decorators, no framework, no I/O
-- Domain tests use vitest and domain classes only; never `Test.createTestingModule`
-- Aggregates expose business methods (`pay()`, `cancel()`); no public setters
-- Wanting a library in the domain means the logic belongs in application or infrastructure
-
-## DTOs (zod + nestjs-zod)
-
-Every request input (`@Body()`, `@Query()`, `@Param()`) and every response payload is a **DTO class created with zod and `nestjs-zod`**. No hand-written DTO classes, no `class-validator` / `class-transformer` decorators, no inline object types or bare `string` for controller inputs and outputs.
-
-```ts
-// modules/<ctx>/presentation/dtos/greeting-query.dto.ts
-import { createZodDto } from 'nestjs-zod';
-import { z } from 'zod';
-
-export const GreetingQuerySchema = z.object({ name: z.string().default('world') });
-export class GreetingQueryDto extends createZodDto(GreetingQuerySchema) {}
-```
-
-- **Location and naming**: `<ctx>/presentation/dtos/<name>.dto.ts`, one DTO per file. Export the schema as `XxxSchema` and the class as `XxxDto`; suffix `RequestDto` / `QueryDto` / `ResponseDto` by role when a module has several
-- **Requests**: type the handler parameter with the DTO class (`@Query() query: GreetingQueryDto`). The global `ZodValidationPipe` (`app/http/validation/`) validates and transforms it; a failure becomes `VALIDATION_FAILED` (400) in the envelope automatically. Controllers never re-validate
-- **Responses**: build them with `XxxResponseDto.create(data)`, which parses through the schema and strips unknown fields (a failure is a bug and returns a generic 500). Return them inside the `Result` (see Error Handling). Never return a domain object, aggregate, or database row directly
-- **What a schema validates**: shape, types, and format only (string, email, uuid, ranges, defaults, trimming). Business rules (uniqueness, "name must not be blank", state transitions) stay in the domain and come back as `DomainError`s. Do not duplicate a domain rule in a schema
-- **Layering**: DTOs and zod schemas are a presentation concern. `domain/`, `application/`, and `infrastructure/` MUST NOT import `presentation/` (enforced) and `domain/` MUST NOT import `zod` (enforced). Application services take and return plain domain/application types; the controller maps DTO ⇄ those types
-- Derive variants from the schema instead of rewriting it (`.pick()`, `.omit()`, `.partial()`, `.extend()`); infer types with `z.infer` only when a plain type is needed
-- Reference: `modules/greeting/presentation/dtos/`
-
-## Error Handling (neverthrow + error classes)
-
-Expected failures are values, not exceptions: `Result` / `ResultAsync` from `neverthrow`. **Every error is a class** extending one of two bases (domain errors: ours; HTTP errors: Nest's built-in exceptions); never use strings, plain objects, or bare `Error` as `E`.
-
-| Layer                                        | Error base class                                            | Defined in                     | Carries                              |
-| -------------------------------------------- | ----------------------------------------------------------- | ------------------------------ | ------------------------------------ |
-| `domain/`, `application/`, `infrastructure/` | `DomainError` (`src/app/base/domain-error.ts`)              | `<ctx>/domain/<ctx>.errors.ts` | user-friendly `message`              |
-| `presentation/`                              | `HttpException` subclasses from `@nestjs/common` (built-in) | not defined by us              | status, `{ code, message }` response |
-
-**Domain errors**
-
-- Extend `DomainError`, declare a literal `override readonly name = 'XxxError'` (this makes unions of errors exhaustively matchable), and give the constructor a default user-friendly message: `constructor(message = 'Please enter a name.') { super(message) }`
-- Omit the constructor to fall back to the generic default (`DEFAULT_DOMAIN_ERROR_MESSAGE`)
-- Messages are read by end users: plain English, no internals, no stack details, no IDs they cannot act on
-- Export a union per context: `type GreetingError = GreetingNameEmptyError | ...`
-- Domain methods, application services, and port methods return `Result<T, XxxError>` / `ResultAsync<T, XxxError>` for expected failures
-
-**HTTP errors**
-
-- Use the built-in exceptions from `@nestjs/common`: `BadRequestException` (400), `UnauthorizedException` (401), `ForbiddenException` (403), `NotFoundException` (404), `ConflictException` (409), `UnprocessableEntityException` (422), `InternalServerErrorException` (500). We define no HTTP error classes of our own
-- **`{ code, message }` convention**: every controller builds the exception for a mapped domain error with the shared `toHttpException(error, HTTP_EXCEPTION_FOR)` (`src/app/http/errors/to-http-exception.ts`), which looks the exception class up by `error.name` in the controller's `HTTP_EXCEPTION_FOR` map and returns `new HTTP_EXCEPTION_FOR[error.name]({ code: error.name, message: error.message })`. Never hand-build the `{ code, message }` object in a controller. The envelope uses a string `code` from an object response as the envelope `code`; without one it falls back to the status name (`NOT_FOUND`, ...). Keeping domain error names as envelope codes was an explicit user decision
-- Only `presentation/` and `app/` create HTTP exceptions (enforced for `domain/`, `application/`, `infrastructure/` by oxlint `no-restricted-imports`)
-
-**Controllers**
-
-- Every controller handler takes zod DTOs for its inputs and returns `Result<XxxResponseDto, HttpException>` (or `ResultAsync<Dto, HttpException>`; `HttpException` from `@nestjs/common`). It never returns a bare value and never throws for an expected failure
-- **[convention]** The controller chooses the HTTP status per domain error in its `HTTP_EXCEPTION_FOR` map and builds the exception in `.mapErr(...)` with `toHttpException(error, HTTP_EXCEPTION_FOR)`. The message stays friendly and the envelope code identifies the domain failure. **Every controller maps domain errors through the shared utility.** Every controller declares a module-level `HTTP_EXCEPTION_FOR = { XxxError: SomeException, ... } satisfies Record<XxxError['name'], HttpExceptionClass>` map (one entry for a single-error context) and passes the whole map: `toHttpException(error, HTTP_EXCEPTION_FOR)`; the lookup by name happens inside the utility, never at the call site. The utility's signature is `<E extends DomainError>(error: E, exceptionFor: Record<E['name'], HttpExceptionClass>)`, so a new error in the union fails to compile until it is listed (reference: `auth/presentation/auth.controller.ts`). The boundary is enforced by `modules-app-allowlist`.
-- Reference: `modules/greeting/presentation/greeting.controller.ts`
-
-**Everywhere else**
-
-- **`throw` is only for bugs and unrecoverable states** (broken invariant that "cannot happen", misconfiguration at startup). Anything thrown that is not an `HttpException` is treated as a bug and returned as a generic 500; its details are logged, never sent
-- **Wrap third-party throws at the infrastructure boundary**: `ResultAsync.fromPromise(promise, (cause) => new SomeDomainError(...))` / `Result.fromThrowable(fn, mapError)`, so nothing above infrastructure sees a rejected promise
-- **Chain, don't nest**: `map` / `andThen` / `mapErr` / `match`; `safeTry` with `yield*` for 3+ dependent steps. No `try/catch` for control flow in `domain/` or `application/`
-- MUST NOT use `_unsafeUnwrap()` / `_unsafeUnwrapErr()` anywhere; in tests assert with `expect(result).toEqual(ok(value))` / `err(new XxxError())`
-- MUST NOT ignore a returned `Result`; handle both branches
-
-When stuck: unsure whether a failure is expected or a bug → ask "could a caller do something useful with it?" Yes → return an error class in a `Result`. No → `throw`.
-
-## Response Envelope
-
-Every HTTP response uses one of two shapes; clients switch on `ok`:
-
-```json
-{ "ok": true, "data": { "message": "Hello, Ada!" } }
-{ "ok": false, "error": { "code": "GreetingNameEmptyError", "message": "Please enter a name." } }
-```
-
-- Implemented once, globally, in `src/app/http/envelope/`; `EnvelopeModule` registers it via `APP_INTERCEPTOR` / `APP_FILTER` and `AppModule` imports that module. Do not re-register per module
-- `EnvelopeInterceptor` unwraps the controller's `Result`: `Ok` → `{ ok: true, data }` (empty value → `data: null`); `Err` → the `HttpException` is thrown into the pipeline
-- `EnvelopeFilter` renders every thrown value: an `HttpException` whose response is an object with a string `code` → that `code`, its status, and its `message`. Controllers never build `{ ok, data }` themselves
-- Framework errors are mapped automatically: unknown route → `NOT_FOUND`, zod DTO failure (`ZodValidationException`) or Nest validation message list → `VALIDATION_FAILED` (400, message lists `path: reason` pairs), any other `HttpException` without a `code` → its status name (`HttpStatus[status]`), anything else → `INTERNAL_ERROR` (500) with a generic message
-- `code` values are stable once released; `message` is human-readable and may change
-- `StreamableFile` responses (downloads) skip the envelope. Handlers using `@Res()` bypass it; avoid `@Res()`
-- Change envelope behavior only in `app/http/envelope/` and cover it with a test in `app.module.spec.ts`
-
-## Configuration (nest-typed-config)
-
-All configuration comes from environment variables, validated once at startup and read through a typed class. Nothing reads `process.env` directly except `config.module.ts`.
-
-- **Library**: `nest-typed-config` (`TypedConfigModule.forRoot` with `dotenvLoader()`), validated with **zod** through its `validate` option, so config follows the same zod convention as DTOs
-- **Schema**: `src/app/config/app-config.ts` declares the env variables as a plain `z.object`. **No `.transform` and no renaming**: config keys keep their `UPPER_CASE` env names (`config.PORT`, `config.LOG_LEVEL`). `AppConfig` (a `createZodDto` class) is both the type and the injection token: `constructor(private readonly config: AppConfig)`
-- **Fail fast**: invalid or missing config throws at boot and the app does not start. Give a variable a `.default()` only when a safe default exists; secrets and URLs never get defaults
-- **Adding a setting**: add it to `AppConfigSchema` (the key is the env name, `UPPER_CASE`; no transform), add it to `.env.example` with a comment, add a case to `app-config.spec.ts`. Never hard-code a value that could differ per environment
-- `ConfigModule` is global, imported once in `AppModule`. `.env` is git-ignored (create it with `cp .env.example .env`); `.env.example` is committed and lists every variable
-- **Current variables**: `DATABASE_URL` (required PostgreSQL URL, no default), `DATABASE_TIMEOUT_MS` (connection/query timeout in milliseconds, default 3000), `JWT_SECRET` (required, min 32 chars, no default; the app refuses to start without it), `JWT_EXPIRES_IN` (token lifetime in seconds, default 3600), `NODE_ENV` (`development` | `test` | `production`), `PORT` (default 3000), `LOG_LEVEL` (optional, `trace` … `silent`; when unset the level follows `NODE_ENV`, see Logging)
-- **Modules do not import `app/config`** (enforced by the app allowlist). When a module needs a setting, ask before choosing how to pass it in; do not widen the allowlist on your own
-- Reference: `src/app/config/`
-
-## Logging and Request Context (pino + nestjs-cls)
-
-- **Logger**: `pino` through `nestjs-pino`. Output is JSON (pretty in `NODE_ENV=development`); level is `AppConfig.LOG_LEVEL` when set (it overrides everything), otherwise the `NODE_ENV` default: production `info`, test `warn`, development `debug`. `main.ts` installs it as the Nest logger (`bufferLogs` + `app.useLogger`), so framework logs use it too
-- **Startup output**: after `app.listen`, `main.ts` logs one banner in every environment (context `Bootstrap`): Environment, Address, Port, Node, then a group of endpoint links (`- App`, `- Health`). It is built by the pure `formatStartupBanner` (`src/app/logger/startup-banner.ts`) from `{ rows: [label, value][] }` groups (labels aligned per group, groups split by a blank line). Nest's own bootstrap chatter is always dropped by a pino `hooks.logMethod` in `logger.config.ts`: logs whose `context` is in `FILTERED_LOG_CONTEXTS` (`RoutesResolver`, `RouterExplorer`, `InstanceLoader`, `NestFactory`, `NestApplication`) are not written at any level. Request, application, and `Bootstrap` logs are unaffected; add a context to that constant to hide another framework logger. When adding a public endpoint worth showing (docs, metrics), add it to the banner's link group in `main.ts`
-- Dev logs are pretty-printed on a single line with `[context]` prefixes; production logs stay full JSON
-- **Request context**: `nestjs-cls` opens an async context per HTTP request (`src/app/context/`). Every request gets a **unique UUID, always generated server-side**; a client-supplied `X-Request-Id` is ignored. It is returned in the `X-Request-Id` response header and available via `ClsService.getId()`
-- **Per-request values**: `RequestContext` (`src/app/http/context/request-context.ts`, provided globally by `RequestContextModule`) is the single place to read or write them (today: the authenticated user). Controllers read it and pass values to services as arguments; services never read request context
-- **`requestId` on every line**: the logger `mixin` adds `requestId` from the context to every log line, including the automatic `request completed` line. Never pass it by hand
-- **Scoped logger**: inject `PinoLogger` and set the class as context, so lines carry `context` and `requestId`:
-
-```ts
-constructor(private readonly logger: PinoLogger) {
-  this.logger.setContext(GreetingService.name)
-}
-// this.logger.info({ orderId }, 'Order paid')
-```
-
-- Log with structured fields first, message second (`logger.info({ orderId }, 'Order paid')`); messages are static text, variable data goes in fields
-- Use `debug` for diagnostics, `info` for business events, `warn` for recoverable oddities, `error` for failures. Do not log expected `Result` errors at `error`
-- **Never log secrets or personal data** (passwords, tokens, full payloads). `authorization`, `cookie`, and `set-cookie` headers are redacted; do not add fields that bypass that
-- `console.*` is banned by lint (`no-console`); use the logger. `domain/` stays pure and does not log; log in `application/`, `infrastructure/`, and `presentation/`
-- Work outside a request (cron, queue consumers) has no request id; wrap it in `PinoLogger.runInContext` to bind fields such as a job id
-- Reference: `src/app/logger/`, `src/app/context/`, and `modules/greeting/application/services/greeting.service.ts`
-
-## Database (Drizzle + CLS transactions)
-
-- **[convention]** `app/database/database.module.ts` registers `DrizzleModule.forRootAsync` from `@nestjs/drizzle` with one `pg.Pool`, built from required `AppConfig.DATABASE_URL`. CLS consumes its official `getDrizzleToken()` provider. The NestJS Drizzle module closes the pool on application shutdown; `main.ts` enables signal shutdown hooks. Connections are lazy: database outages surface on queries, not during boot. `database-pool.ts` registers an idle-connection error handler before exposing the pool so PostgreSQL restarts do not crash Node; it logs only a validated diagnostic code through scoped `PinoLogger`, never the error message or attached client. The pool discards failed idle connections and reconnects on the next query.
-- **[convention]** `RequestContextModule` installs `ClsPluginTransactional` with `TransactionalAdapterDrizzleOrm` in the existing CLS context. Repository adapters may inject `TransactionHost<TransactionalAdapterDrizzleOrm<Database>>`, importing `Database` from `@workspace/database/client`, and query through `host.tx`. Use schema exports from `@workspace/database/schema`. Keep database access behind module ports; existing dependency rules still apply.
-- **[convention]** `host.withTransaction(callback)` uses the active transaction for nested calls; outside a transaction, `host.tx` uses the shared client. A rejected callback rolls back. A resolved `Err` Result **commits**: when implementing a multi-write Result flow, explicitly translate failure into transaction rejection at the infrastructure boundary and map it back to a domain error outside. Do not assume `@Transactional()` understands `neverthrow`.
-- Schema and migrations belong to `packages/database`, never the API. See its `AGENTS.md` for ID and timestamp semantics. `app/database/database.e2e-spec.ts` is the real commit/rollback reference; run against a migrated disposable database with `DATABASE_URL=... pnpm --filter api test:integration` after building the database package. Normal `pnpm check` requires no database.
-- **[convention]** `modules/health/` is stage 2: its controller calls the `POSTGRES_HEALTH_PROBE` port; the infrastructure adapter runs `SELECT 1` through `TransactionHost`. Authenticated `GET /api/health` returns `{ status: "ok", postgres: "up" }` only after a successful query, or a friendly `PostgresUnavailableError` mapped to HTTP 503. `DATABASE_TIMEOUT_MS` (default 3000, maximum 60000) bounds connection acquisition and query execution separately; PostgreSQL statement timeout also cancels slow queries. Unit/HTTP specs replace the probe so `pnpm check` stays database-independent.
-- Authentication queries PostgreSQL through its repository port; see Authentication below.
-
-## Authentication (@nestjs/jwt, no Passport)
-
-The API is **secure by default**: every route needs a valid Bearer token unless it is explicitly marked public.
-
-- **Guard**: `JwtAuthGuard` (`src/app/auth/jwt-auth.guard.ts`) is a global `CanActivate` registered once through `APP_GUARD` in `AuthWiringModule` (imported by `AppModule` after `ConfigModule`). It checks `IS_PUBLIC_KEY` with `Reflector.getAllAndOverride([handler, class])`; otherwise it reads `Authorization: Bearer <token>`, verifies it with `JwtService.verifyAsync`, and maps the `{ sub, email }` payload to `{ id, email }` and stores it with `RequestContext.setUser`. A missing or malformed header, bad signature, expired token, or malformed payload throws `UnauthorizedException('Please sign in to continue.')`, rendered as 401 `UNAUTHORIZED`. No Passport packages: verification is `@nestjs/jwt` only
-- **`@Public()`** (`src/app/http/auth/public.decorator.ts`) skips the guard on a handler or a whole controller class. `POST /auth/login` is the only public route; do not add others without a requirement
-- **`RequestContext`** (`src/app/http/context/request-context.ts`) is the one global per-request context: an injectable wrapper around `ClsService` (no second AsyncLocalStorage) with one typed method per per-request value; add a method there for each new value. The guard calls `setUser(user)`; `getUser()` returns `AuthenticatedUser` (`{ id, email }`) and throws a plain `Error` when none is set (a programming error: `@Public()` route or outside a request). `RequestContextModule` (`@Global()`) provides and exports it. It lives in `app/http/context/`, which `presentation/` may import (allowlisted)
-- **No param decorator for the current user. [convention]** Only controllers inject `RequestContext` and read it (`getUser()`); they pass the values to services as plain arguments. Services never read request context, so they stay pure and testable without a request
-- **[enforced]** `modules/` MUST NOT import `nestjs-cls` (`modules-no-cls`); request-scoped data is read only through `RequestContext`. `RequestContext` sits in `app/http/`, so `http-errors-presentation-only` already keeps it out of `domain/`, `application/`, `infrastructure/`
-- **Token-issuer port**: `TokenIssuer` (interface + `TOKEN_ISSUER` Symbol), `IssuedToken`, `TokenIssueError`, and `AuthenticatedUser` live in `src/shared-kernel/auth/`. `app/auth/jwt-token-issuer.ts` implements it with `JwtService` (payload: `sub` and `email` only) and `modules/auth` consumes it, so the module never imports `@nestjs/jwt` or `app/config`. This is a deliberate shared-kernel exception: one consumer plus one implementer on opposite sides of the app/module boundary, which is the only legal place for the contract
-- **`modules/auth/`** (stage 3): `POST /auth/login` (200, `{ accessToken, tokenType: 'Bearer', expiresIn }`) and `GET /auth/me`. `AuthService.login` chains `UserRepository.findByEmail` (`DrizzleUserRepository` in `infrastructure/`, through the active CLS `TransactionHost`) → `PasswordVerifier.verify` (scrypt + `timingSafeEqual` in `infrastructure/`) → `TokenIssuer.issue`. An unknown email is still verified against a dummy hash and ends in the same `InvalidCredentialsError` (401, code `InvalidCredentialsError`) as a wrong password. Passwords and tokens are never logged
-- **Env vars**: `JWT_SECRET`, `JWT_EXPIRES_IN` (see Configuration)
-- **[convention]** `DrizzleUserRepository` trims and lowercases lookup emails, queries only `id`, `email`, and `passwordHash`, and maps database failures to `UserLookupError` (the existing HTTP 500 contract). Store emails normalized to lowercase. Login has no hardcoded fallback.
-- **Dev login credentials**: run `pnpm db:migrate`, then `pnpm db:seed` to create `admin@example.com` / `12345678` in PostgreSQL. Seed preserves existing accounts and their passwords.
-- **Tests**: ordinary HTTP specs override `USER_REPOSITORY` with test fixtures to keep `pnpm check` database-independent. `src/auth.e2e-spec.ts` uses a migrated, seeded disposable PostgreSQL database to verify login/JWT/me and CLS transaction visibility; run with `test:integration`. The guard is unit-tested in `app/auth/jwt-auth.guard.spec.ts`
-- Out of scope: refresh tokens, logout/revocation, roles, rate limiting, registration, Swagger auth
-- Reference: `src/app/auth/`, `src/app/http/auth/`, `src/app/http/context/`, `src/shared-kernel/auth/`, `src/modules/auth/`
-
-## Cross-Context Communication
-
-Need a return value (sync) → **port**; trigger a side effect (async) → **domain event**.
-
-1. Port interface and its `Symbol('X_TOKEN')` live in the publisher's `application/ports/` (or `shared-kernel/` once a second consumer exists)
-2. Consumers inject by token: `@Inject(X_TOKEN)`, and import the interface with `import type`
-3. Events are pure data classes in the publisher's `domain/events/`; subscribers use `@OnEvent(XEvent.name)`
-4. Constructor injection only; no `@Optional()` or property injection
-5. A module exporting tokens for other contexts is `@Global()`
-6. MUST NOT use `forwardRef()` or bidirectional event subscriptions; both mean the boundary is wrong. Stop and ask
-
-## External Side Effects Go Through Ports
-
-- Database, cache, HTTP clients, queues, and file system are accessed via ports declared in `application/ports/` and implemented in `infrastructure/`
-- Services MUST NOT inject concrete clients; they depend on ports. The one exception is the logger (`PinoLogger`), a cross-cutting concern (see Logging)
-- Controllers return DTOs inside a `Result` (see Error Handling); never leak aggregates
-
-## shared-kernel Admission
-
-Admit only cross-context contracts (ports, event classes, global enums, generic DTO bases, pure value objects). Move a contract in when the **second consumer** appears; move it back when only one remains. MUST NOT hold business logic, mutable state, or utility functions.
-
-## Progressive Layering
-
-Start a new module as thin as possible and add a layer only on a signal:
-
-| Stage | Structure                     | Signal to advance                   |
-| ----- | ----------------------------- | ----------------------------------- |
-| 1     | presentation + infrastructure | Cross-request state needed          |
-| 2     | + application/ports           | A read → judge → write flow appears |
-| 3     | + application/services        | Invariants or domain events appear  |
-| 4     | + domain/aggregates + events  | —                                   |
-
-Skip at most one stage at a time; never downgrade. Unsure → ask. The `greeting` module is a stage-3 sample; delete or replace it when real modules exist.
-
-## Nest-Specific Lint Notes
-
-- `typescript/consistent-type-imports` is off for the API: Nest DI needs runtime class imports for constructor parameters (`emitDecoratorMetadata`). Still use `import type` for pure interfaces and types
-- Empty decorated classes (modules, controllers) are allowed
-- The `nestjs()` lint preset does not load on the current oxlint; do not add it until verified
+When a change implements a planned pattern or changes one of these seams, update this file in the same change: state the rule, why it exists, its reference implementation, and whether tooling enforces it. Update `/DECISIONS.md` when the choice or trade-off changes. Keep root `AGENTS.md` for cross-package rules only.

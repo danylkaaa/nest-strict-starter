@@ -1,10 +1,9 @@
 import { Module } from '@nestjs/common';
 
-import { GreetingService } from './application/services/greeting.service.js';
-import { GreetingController } from './presentation/greeting.controller.js';
+import { GreetingService } from './greeting.service.js';
 
 @Module({
-  controllers: [GreetingController],
+  exports: [GreetingService],
   providers: [GreetingService],
 })
 export class GreetingModule {}

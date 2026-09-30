@@ -1,10 +1,10 @@
 # nest-strict-starter
 
-pnpm + turbo monorepo with a NestJS API. Strict lint, format, and module-boundary checks are part of the design: never weaken them to make code pass.
+pnpm + turbo monorepo with a NestJS backend. Strict lint and format checks are part of the design: never weaken them to make code pass. Backend dependency direction is documented in `apps/backend/AGENTS.md`; its machine check has not yet been restored after the refactor.
 
 Context lives in `AGENTS.md` files (this one at the root, one per package). Claude Code and other agents read them directly; do not add `CLAUDE.md` files.
 
-- Before working in a package, read its `AGENTS.md`: `apps/api/AGENTS.md`, `packages/database/AGENTS.md`
+- Before working in a package, read its `AGENTS.md`: `apps/backend/AGENTS.md`, `packages/database/AGENTS.md`
 - Tooling config rules load from `.claude/rules/tooling.md` via `paths:` matching
 
 ## Persisting Instructions
@@ -12,7 +12,7 @@ Context lives in `AGENTS.md` files (this one at the root, one per package). Clau
 When the user gives a standing instruction ("always ...", "never ...", "from now on ...", "every X should ...", "use X for Y", "we do it this way"), do not just follow it for the current task:
 
 1. Ask whether it should be persisted in the repo, unless the user already said to write it down
-2. If yes, write it as a rule in the right place in the same commit as the related change: cross-package rules in this file; package patterns in that package's `AGENTS.md` (e.g. `apps/api/AGENTS.md`); tooling config rules in `.claude/rules/tooling.md`. Update an existing rule instead of adding a duplicate or a contradicting one
+2. If yes, write it as a rule in the right place in the same commit as the related change: cross-package rules in this file; package patterns in that package's `AGENTS.md` (e.g. `apps/backend/AGENTS.md`); tooling config rules in `.claude/rules/tooling.md`. Update an existing rule instead of adding a duplicate or a contradicting one
 3. Write it in the file's existing style: the rule, why it exists, where the reference implementation lives, and whether it is machine-enforced (add a lint or dependency-cruiser rule when one can enforce it)
 4. If the instruction is a one-off for the current task, do not persist it
 
@@ -28,7 +28,7 @@ When a change introduces or alters a pattern (error handling, response shape, a 
 
 ## Layout
 
-- `apps/api` — NestJS API (DDD-style modules)
+- `apps/backend` — NestJS backend with HTTP (`src/api/`), future queue worker (`src/worker/`), business features (`src/modules/`), and shared infrastructure (`src/common/`). Backend ownership and dependencies are defined only in `apps/backend/AGENTS.md`
 - `packages/database` — shared Drizzle schema, client types, and PostgreSQL migrations
 
 ## Commands
@@ -43,11 +43,11 @@ pnpm format         # auto-format everything
 pnpm lint:fix       # apply safe lint fixes
 ```
 
-Single package: `pnpm --filter api <script>`.
+Single package: `pnpm --filter backend <script>`.
 
 ## Monorepo Constraints
 
-- Root `package.json` holds only tooling shared by all packages (turbo, oxlint, oxfmt, oxlint-tsgolint, @infra-x/code-quality). Runtime and package-specific dev dependencies go in the package that uses them: `pnpm --filter api add <dep>`
+- Root `package.json` holds only tooling shared by all packages (turbo, oxlint, oxfmt, oxlint-tsgolint, @infra-x/code-quality). Runtime and package-specific dev dependencies go in the package that uses them: `pnpm --filter backend add <dep>`
 - Inter-package dependencies use the `workspace:*` protocol; never import across packages by relative path
 - Every package defines the same script names (`build`, `typecheck`, `lint`, `format`, `format:check`, `test`, `deps` where applicable) so turbo can run them uniformly
 - `typeAware` lint options are root-config-only: put them in `/oxlint.config.ts`; package configs `extends` the root config and add presets
@@ -61,24 +61,22 @@ Single package: `pnpm --filter api <script>`.
 - MVP-first: build only what the current requirement needs; no speculative layers or config switches
 - Test-first: write the failing test, then the implementation; tests sit next to source (`foo.ts` + `foo.spec.ts`)
 - Functional-first: prefer pure functions and immutable data; keep side effects in infrastructure
-- One response envelope for the whole API: `{ ok: true, data }` or `{ ok: false, error: { code, message } }` (see `apps/api/AGENTS.md`)
-- Errors as values: expected failures are `neverthrow` `Result`s, not exceptions (see `apps/api/AGENTS.md`)
-- Organize vertically by business capability (`modules/<context>/`), not by technical layer; each module owns its full stack (see `apps/api/AGENTS.md`, Vertical Structure)
+- Backend HTTP and worker entry points call business use cases in `apps/backend/src/modules/`; see `apps/backend/AGENTS.md` for ownership, DTO, Result, and dependency rules
 
 ## Implementing Plans and Specs (agents)
 
-Code for `apps/api` is written by agents, not directly by the orchestrating session. Use the `implement-plan` skill whenever a plan, spec, or feature request needs implementing there.
+Code for `apps/backend` is written by agents, not directly by the orchestrating session. Use the `implement-plan` skill whenever a plan, spec, or feature request needs implementing there.
 
-- `.claude/skills/implement-plan/SKILL.md`: the orchestrator. It loops implementer → reviewer until the reviewer approves or **5 attempts** are used, then reports and stops. It never writes API code itself and never commits
+- `.claude/skills/implement-plan/SKILL.md`: the orchestrator. It loops implementer → reviewer until the reviewer approves or **5 attempts** are used, then reports and stops. It never writes backend code itself and never commits
 - `.claude/agents/api-implementer.md`: Sonnet. Reads both `AGENTS.md` files and the reference implementations, works test-first, runs `pnpm check`, reports `DONE` or `BLOCKED`
-- `.claude/agents/api-reviewer.md`: Opus, high effort, read-only. Checks the spec and every pattern in `apps/api/AGENTS.md`, runs `pnpm check`, and answers `VERDICT: APPROVE` or `VERDICT: CHANGES_REQUESTED` with numbered, actionable findings. Only `blocker` and `major` findings send work back
+- `.claude/agents/api-reviewer.md`: Opus, high effort, read-only. Checks the spec and every pattern in `apps/backend/AGENTS.md`, runs `pnpm check`, and answers `VERDICT: APPROVE` or `VERDICT: CHANGES_REQUESTED` with numbered, actionable findings. Only `blocker` and `major` findings send work back
 - Agents cannot ask the user questions: an ambiguous spec or an "ask first" case ends in `BLOCKED`, and the orchestrator asks
 - **When a pattern changes, update the agents too.** The agents point at `AGENTS.md` instead of copying it, so most changes need no edit here. Change an agent file only when its process or checklist changes
 - Small edits that do not need a spec (typo, one-line fix) can be done directly
 
 ## Quality Gates
 
-All must pass before a change is done: `pnpm check` (zero type errors, zero lint warnings, format clean, zero dependency violations, tests green). If a rule seems wrong, stop and ask; do not add `// oxlint-disable` or edit rule configs on your own.
+All must pass before a change is done: `pnpm check` (zero type errors, zero lint warnings, format clean, configured dependency checks, tests green). Review the backend dependency conventions in `apps/backend/AGENTS.md` manually until a machine check exists. If a rule seems wrong, stop and ask; do not add `// oxlint-disable` or edit rule configs on your own.
 
 ## Git
 

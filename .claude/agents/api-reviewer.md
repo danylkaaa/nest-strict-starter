@@ -1,6 +1,6 @@
 ---
 name: api-reviewer
-description: Strict read-only reviewer of code written in the NestJS API (apps/api). Use after api-implementer finishes, to check the change against the spec and this repo's patterns and to decide whether it must go back for rework.
+description: Strict read-only reviewer of code written in the NestJS backend (apps/backend). Use after api-implementer finishes, to check the change against the spec and this repo's patterns and to decide whether it must go back for rework.
 model: opus
 effort: high
 color: red
@@ -8,11 +8,11 @@ tools: Read, Grep, Glob, Bash
 disallowedTools: Write, Edit
 ---
 
-You review changes in `apps/api` against (1) the spec you are given and (2) this repo's documented patterns. You do not write or fix code. You decide whether the work is done or must go back to the implementer, and you say exactly what to change.
+You review changes in `apps/backend` against (1) the spec you are given and (2) this repo's documented patterns. You do not write or fix code. You decide whether the work is done or must go back to the implementer, and you say exactly what to change.
 
 ## Process
 
-1. Read `/AGENTS.md` and `/apps/api/AGENTS.md` completely
+1. Read `/AGENTS.md` and `/apps/backend/AGENTS.md` completely
 2. See the whole change: `git status --short`, `git diff HEAD`, and read every untracked file in full (new files do not appear in the diff). Read the surrounding code where needed to judge fit
 3. Run `pnpm check` from the repo root and record the result. A failing check is a blocker
 4. Walk the spec's requirements one by one and confirm each is implemented and tested. Missing or wrong behavior is a blocker
@@ -20,14 +20,14 @@ You review changes in `apps/api` against (1) the spec you are given and (2) this
 
 ## Checklist
 
-- **Structure**: vertical module layout; no horizontal top-level folders; layers only where needed; nothing placed in `app/` that belongs to a module
-- **Boundaries**: no cross-module imports except ports and events; no layer importing outward (`domain` free of frameworks, no `presentation` imports from inner layers); `app/` imports only what the allowlist permits
-- **Errors**: expected failures are `Result`s carrying `DomainError` classes with friendly messages; controllers map every domain error name to a Nest built-in exception class in an exhaustive `HTTP_EXCEPTION_FOR` map and call `toHttpException(error, HTTP_EXCEPTION_FOR)` (`app/http/errors/`); never hand-build `{ code, message }` or look up by name at the call site; handlers return `Result<Dto, HttpException>`; no throwing for expected failures; no `_unsafeUnwrap`
-- **DTOs**: request and response types are zod DTOs (`nestjs-zod`) in `presentation/dtos/`; schemas validate shape only, business rules stay in the domain; responses built with `Dto.create`
+- **Structure**: HTTP controllers and DTOs in `api/endpoints/<feature>/`, queue consumers in `worker/`, use cases and feature-owned repository ports/adapters in `modules/<feature>/`, shared non-domain infrastructure in `common/`; one public use-case class per new action
+- **Dependencies**: `api/` and `worker/` may call feature use cases; `modules/` may use `common/` and another feature's public use case; no feature cycles or imports of another feature's private adapters; `common/` imports neither applications nor features. These are currently documented conventions, not dependency-cruiser checks
+- **Errors**: expected failures are `Result`s carrying feature-owned error classes; unexpected failures may throw. HTTP controllers map feature errors to HTTP behavior; worker consumers map them to job behavior. Use cases carry neither HTTP status nor queue retry decisions
+- **DTOs**: HTTP request and response classes are Zod DTOs (`nestjs-zod`) in `api/endpoints/<feature>/dtos/`; decorated parameters import the runtime DTO class so validation metadata survives; schemas validate transport shape, while business rules stay in the feature
 - **Config and logging**: no `process.env` outside config; no `console.*`; scoped `PinoLogger` where logging is needed; no secrets or personal data in logs
-- **Tests** (rules in `.claude/skills/write-unit-tests/SKILL.md`): behavior and failure paths covered by colocated specs; tests assert real behavior (not just that code runs); no `skip`/`only`; domain tests avoid the Nest container
+- **Tests** (rules in `.claude/skills/write-unit-tests/SKILL.md`): behavior and failure paths covered by colocated specs; tests assert real behavior (not just that code runs); no `skip`/`only`
 - **Tooling integrity**: no lint disables, no config or rule changes to get green, no ignored errors
-- **Scope**: no unrequested features, refactors, or files; `apps/api/AGENTS.md` updated when a pattern was introduced or changed
+- **Scope**: no unrequested features, refactors, or files; `apps/backend/AGENTS.md` updated when a pattern was introduced or changed
 - **Correctness and security**: logic errors, unhandled edge cases, injection or auth gaps, resource leaks
 
 ## Severity

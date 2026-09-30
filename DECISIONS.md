@@ -1,5 +1,25 @@
 # Design Decisions
 
+## Backend application and feature split
+
+**Approach chosen:** `apps/backend/src/api/` owns the HTTP application and its controllers and Zod DTOs. `src/worker/` will own queue consumers. `src/modules/<feature>/` owns business use cases, feature errors, repository ports and adapters, and Nest feature wiring. `src/common/` holds non-domain infrastructure shared by API and worker. New actions use one public `<Action>UseCase.execute(input)` class and return a `Result` for expected feature errors. API and worker translate those results for their own transports. A feature may call another feature's public use case, but feature dependencies must not cycle.
+
+**Why:** Both entry points can reuse one business action without putting HTTP or queue semantics into it. Each feature keeps its queries and business errors local, while database connection setup can be shared.
+
+**Trade-offs:** The existing `GreetingService` remains a smaller legacy example rather than a template for new use-case naming. Nest injection and logging remain available inside use cases, so they are not framework-free. The worker and a feature-owned Drizzle adapter are still planned, and the new dependency direction is documented but is not yet checked by dependency-cruiser after the old configuration was removed.
+
+---
+
+## Backend configuration and Drizzle composition
+
+**Approach chosen:** `@nestjs/config` loads environment variables. A `flat.unflatten` loader converts `__`-separated names into nested data, then the composed Zod schema validates it. Each nested schema stays beside its owning module. `AppModule` extracts `ApiConfig.postgres` in the factory passed to `DatabaseModule.forRootAsync`; the database module owns pool and Drizzle setup.
+
+**Why:** New nested settings require a schema and environment entry without another hand-written mapping. The database module receives only its own configuration shape, while the composition root owns the application-wide config.
+
+**Trade-offs:** Environment names now use the nested `__` form, such as `postgres__url` and `logger__level`. Existing deployments using `DATABASE_URL` or `LOG_LEVEL` must rename those variables. Drizzle's pool remains lazy, so startup checks configuration and provider wiring but does not test database availability.
+
+---
+
 Status: design agreed on 2026-09-30, before implementation. Items marked **(verify)** are assumptions about pg-boss that the implementation must confirm. If one turns out wrong, this file is updated in the same commit as the code.
 
 ## Delivery Guarantee: Effectively-Once Processing

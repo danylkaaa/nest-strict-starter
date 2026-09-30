@@ -1,6 +1,6 @@
 ---
 name: implement-plan
-description: Orchestrates implementing a plan, spec, or feature request in the NestJS API (apps/api) with an implementer agent and a strict reviewer agent, looping until the reviewer approves or 5 attempts are used. Use whenever the user asks to implement, build, or execute a plan/spec that touches apps/api.
+description: Orchestrates implementing a plan, spec, or feature request in the NestJS backend (apps/backend) with an implementer agent and a strict reviewer agent, looping until the reviewer approves or 5 attempts are used. Use whenever the user asks to implement, build, or execute a plan/spec that touches apps/backend.
 ---
 
 # Implement Plan
@@ -16,7 +16,7 @@ You are the orchestrator. You do not write API code yourself. You run two agents
 
 1. Get the spec. Use the plan or spec the user pointed to (read the file, or take the text from the conversation). Keep it **verbatim**; agents start with no context
 2. If the spec is too vague to implement (no observable behavior, contradictory), ask the user one short clarifying question before starting. Otherwise do not ask
-3. Note `git status --short` so you can tell later what the agents changed. If the working tree already has unrelated uncommitted changes, tell the user and continue only with their OK
+3. Note `git status --short` so you can tell later what the agents changed. Preserve unrelated uncommitted changes and give the agents their paths so they do not overwrite them
 4. Set `attempt = 0`
 
 ## 1. Loop
