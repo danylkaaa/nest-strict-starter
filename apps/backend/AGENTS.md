@@ -106,4 +106,4 @@ For queued email delivery, keep the client submission key and provider delivery 
 
 ## Keeping this guide current
 
-When a change implements a planned pattern or changes one of these seams, update this file in the same change: state the rule, why it exists, its reference implementation, and whether tooling enforces it. Update `/DECISIONS.md` when the choice or trade-off changes. Keep root `AGENTS.md` for cross-package rules only.
+When a change implements a planned pattern or changes one of these seams, update this file in the same change: state the rule, why it exists, its reference implementation, and whether tooling enforces it. Update `/WORKING_DECISIONS.md` when the choice or trade-off changes. Keep root `AGENTS.md` for cross-package rules only.

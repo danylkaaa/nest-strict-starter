@@ -13,6 +13,6 @@ Read `apps/backend/AGENTS.md` for ownership and dependency direction. The HTTP a
 2. Add the corresponding `section__field` key to `apps/backend/.env.example` with a safe example. Keep secrets and URLs required; never commit a real `.env`. Done when a developer can tell which variable to set.
 3. Extend `src/api/core/config/api.config.spec.ts` with a valid and invalid case. Add required test values to `vitest.config.mts` if a test boots the app. Done when the test catches a malformed value and passes for a valid one.
 4. Inject `ApiConfig` in API composition or pass only the owning config section to shared infrastructure. A feature use case receives the specific value through its Nest wiring or injected dependency; it does not import `api/core/config`. Done when dependency direction in `apps/backend/AGENTS.md` remains intact.
-5. Run `pnpm check` from the repo root. Update `apps/backend/AGENTS.md` and `DECISIONS.md` if the config pattern or its trade-off changes. Done when the quality gate passes and the documentation matches the code.
+5. Run `pnpm check` from the repo root. Update `apps/backend/AGENTS.md` and `WORKING_DECISIONS.md` if the config pattern or its trade-off changes. Done when the quality gate passes and the documentation matches the code.
 
 Only `api/core/config/config.module.ts` reads `process.env` for the API. The worker configuration path has not been implemented; define it when `src/worker/` is built and document it then.

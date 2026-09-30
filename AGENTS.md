@@ -24,7 +24,9 @@ When a change introduces or alters a pattern (error handling, response shape, a 
 
 ## Design Decisions
 
-`DECISIONS.md` at the repo root records every design decision: the approach chosen, why, and the trade-offs, including options that were rejected and items still to verify. When a change makes, alters, or confirms a design decision (for example, resolving a **(verify)** item), update `DECISIONS.md` in the same commit. Why: it is a submission deliverable, and it is the only record of _why_ the system works the way it does. Code and `AGENTS.md` record _what_ the patterns are. Testable requirements live in `goals/<name>/facts.md`; keep the two consistent. Not machine-enforced; the reviewer agent checks it.
+`WORKING_DECISIONS.md` at the repo root records every design decision: the approach chosen, why, and the trade-offs, including options that were rejected and items still to verify. When a change makes, alters, or confirms a design decision (for example, resolving a **(verify)** item), update `WORKING_DECISIONS.md` in the same commit. Why: it is the only record of _why_ the system works the way it does. Code and `AGENTS.md` record _what_ the patterns are. Testable requirements live in `goals/<name>/facts.md`; keep the two consistent. Not machine-enforced; the reviewer agent checks it.
+
+`DECISIONS.md` is the submission deliverable, written by the human: it answers only the questions in `docs/task.md` and nothing more. Agents never edit it; if a change affects one of its answers, tell the user. Why: the submission must show the author's own reasoning, in their own words. Not machine-enforced.
 
 ## Layout
 

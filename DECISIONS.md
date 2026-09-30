@@ -1,209 +1,35 @@
 # Design Decisions
 
-## Email delivery and persistence
+## 1. Job Pickup Strategy
 
-**Approach chosen:** An email use case calls a mock client, waits for its simulated delivery result, then stores the sent message in PostgreSQL. The mock waits 1–3 seconds and returns a unique message ID. Only successful sends are stored.
+I used pg-boss on top of PostgreSQL. Workers poll the queue tables and claim jobs with row locks, so two workers never take the same job. One worker application registers a handler for every queue (email, webhook, aircraft report).
 
-**Delivery failures:** The mock fails about 10% of calls (`randomInt(0, 10) === 0`) after its delay, returning `EmailDeliveryFailedError` as a `Result` error, the same pattern as the webhook mock. The use case preserves that error and persists nothing, so a retry with the same delivery key is a fresh attempt. The HTTP controller maps it to 502 with code `EmailDeliveryFailedError`; the worker records it as a retryable `attempt_failed` (category `delivery_failed`) through the existing jobs flow, not as a defect. The error message carries no email content. Trade-off: synchronous API callers now see intermittent 502s by design; thrown exceptions (storage defects) remain a separate `delivery_or_storage` category.
+The main reason is that the queue lives in the same database as the application data. Creating a job and enqueueing it happen in one PostgreSQL transaction, so a job cannot be lost or duplicated between the database and a broker, and there is no need for a transactional outbox. Idempotency is a unique key in the same database. It is also the simplest option to build and run, because there is no extra infrastructure.
 
-**Why:** This gives the email feature a working delivery boundary and durable sent-mail history without introducing the job queue before its concurrency rules are designed.
+The trade-off is throughput and scale. Kafka or RabbitMQ would handle far more jobs, and they push messages instead of being polled. What I gained is one system to run, transactional enqueue, and simple idempotency. Concurrency is configured per queue, so in one worker process the limits of several queues add up.
 
-**Trade-offs:** Sending is synchronous for now. Delivery and database insertion cannot be atomic: if insertion fails after the mock reports success, a later retry could deliver twice. A real provider will need reconciliation or idempotency at this seam.
+---
 
-**Rejected for this slice:** A queue worker and provider-specific client, because neither is needed to demonstrate the email domain yet.
+## 2. Worker Crash Recovery
 
-## Webhook simulation
+TODO
 
-**Approach chosen:** A webhook use case calls a replaceable mock client with a URL and JSON payload. The client waits 1–2 seconds, then returns a receipt of a stable shape on success, with its values derived from the job's delivery key so a repeated call returns the same receipt, or a feature-owned `WebhookDeliveryFailedError` in a `Result` on one in three calls (raised from the original 10% so retries show up often in the UI). It makes no network request.
+---
 
-**Why:** The module can be called by a future worker, while the expected simulated failure remains separate from defects and can later drive retry behavior. The user's original 10% failure requirement superseded the 20% in `docs/task.md`; the rate was later raised to one in three.
+## 3. Priority Queue Implementation
 
-**Trade-offs:** Outcomes are intentionally random, and the module does not yet expose an HTTP endpoint or decide retries. The first worker integration will need to map the error to job retry and failure states.
+Priority is an integer from 1 to 5, where 5 is the highest. It is stored on the job and passed to pg-boss, which orders eligible jobs by priority and then by creation time. I chose this because the queue already supports it, so there is no custom ordering code.
 
-**Rejected for this slice:** Real outbound requests and retry logic inside the feature, because the job queue and its policies are still to be designed.
+The cost is that priority only orders pickup. It does not interrupt a job that is already running, so a long low-priority job can delay an urgent one until it finishes. Several workers choose the best eligible job at the moment they poll, so there is no strict global order. Under constant high-priority load, low-priority jobs can starve.
 
-## Webhook call history
+---
 
-**Approach chosen:** Store one `webhook_calls` row for every completed call, whether it succeeded or failed. Each row has a `whc_<ULID>` ID, a required indexed `job_id`, an outcome, the successful receipt fields or the expected error name and message, and a record timestamp. A lookup by job ID returns attempts newest first.
+## 4. Retry Backoff Strategy
 
-**Why:** A job may retry a webhook; retaining each attempt makes later inspection possible without overwriting previous outcomes. `job_id` is now a `uuid` foreign key to `jobs`, because webhook delivery runs as a queued job (see "Webhook and aircraft report jobs" below), so PostgreSQL enforces that every call belongs to a real job. A partial unique index on `job_id` where `outcome = 'succeeded'` allows many failed attempts but only one success per job.
+TODO
 
-**Trade-offs:** The receipt is stored as columns, so a future real provider with a different response shape may need a migration. The database checks that success and failure fields are mutually consistent. The use case returns the stored call's ID with the receipt so the job result can reference it; a repeated success resolves to the first stored record.
+---
 
-**Rejected:** One row per job, because retries would overwrite history. The earlier "no jobs table, so a logical reference only" choice was replaced once the jobs table existed.
+## 5. One Thing I Would Do Differently With More Time
 
-## Sent-mail identity and listing
-
-**Approach chosen:** Store only `sent_emails` in the initial migration. Drizzle generates `eml_<ULID>` IDs; PostgreSQL checks their shape. List newest IDs first with an exclusive ID cursor, fetching one extra row to determine whether `nextCursor` exists. The API defaults to 20 items and caps a page at 100.
-
-**Why:** ULIDs give each email a stable, sortable cursor without offset shifts as new rows arrive. A single table and index-backed primary-key order are enough for this slice.
-
-**Trade-offs:** ID order reflects record creation order, which can differ from the exact delivery timestamp under concurrency. Cursor pagination supports moving forward through the current ordering, not arbitrary page numbers.
-
-**Rejected for this slice:** Offset pagination, because inserted rows can shift subsequent pages; a compound timestamp cursor, because the unique ULID already supplies a deterministic order.
-
-## Use-case layout
-
-**Approach chosen:** Put each feature's public use-case classes under `modules/<feature>/use-case/`. Keep adapters in the feature root as `<entity>.repository.ts` and ports in `modules/<feature>/ports/`.
-
-**Why:** This makes the application actions easy to locate and separates them from delivery and persistence files without adding a broader layer hierarchy.
-
-**Trade-offs:** Imports are one directory deeper. The rule is documented in `apps/backend/AGENTS.md` and is not yet machine-enforced.
-
-**Rejected:** Keeping action classes at the feature root, because the email feature already has client and repository files beside them. Prefixing the repository adapter filename with its implementation technology, because the feature owns one repository adapter at this stage and the neutral name stays stable if its implementation changes.
-
-## Feature port injection
-
-**Approach chosen:** Declare replaceable client and repository ports as TypeScript interfaces under each feature's `ports/` directory. Export a symbol injection token from the same file as each interface. Nest modules bind adapters to those tokens, and use cases inject the token while depending on the interface type.
-
-**Why:** Interfaces express the required behavior without making adapters inherit a base class. Colocated tokens give Nest a runtime provider identity after interface types are erased.
-
-**Trade-offs:** Each injected port needs an explicit token and `@Inject` decorator, adding wiring to the use-case constructor. The convention is documented in `apps/backend/AGENTS.md` and is not machine-enforced.
-
-**Rejected:** Abstract classes as port contracts and provider tokens, because they require inheritance for a boundary that only needs a structural interface.
-
-## API documentation
-
-**Approach chosen:** Configure `@nestjs/swagger` in `api/core/swagger/`, publish Swagger UI at `/api/docs`, and document each HTTP operation's validated input and actual success/error envelope. Run `nestjs-zod`'s `cleanupOpenApiDoc` on the generated document.
-
-**Why:** Swagger metadata on controllers stays next to the behavior it describes, while bootstrap and envelope schema wiring have one home. Zod DTO schemas need post-processing to appear correctly in OpenAPI.
-
-**Trade-offs:** Endpoint documentation is a convention rather than a machine-enforced coverage check. The installed `nestjs-zod` declares Swagger peer support through version 11, while this backend uses NestJS and Swagger 12; document generation and the UI routes were verified for the current endpoints, but future dependency upgrades should revisit that peer range.
-
-**Rejected:** A separate handwritten OpenAPI file, because it would duplicate request and response definitions maintained in the controllers.
-
-## Migration baseline
-
-**Approach chosen:** Regenerate migration `0000` with only `sent_emails` and remove the default-user seed path. Apply the new baseline to the configured local database, which had no application tables or migration history.
-
-**Why:** The requested email domain is the first persisted feature in this starter, and the unused `users` schema should not appear in its baseline.
-
-**Trade-offs:** This rewrites migration history. Any other database that already applied the former `users` migration needs a separate reset or migration plan; the local database inspected for this change had no rows or tables to preserve.
-
-## Local setup and environment
-
-**Approach chosen:** Use one root `.env` for Compose, the backend, database migrations, and reference-data seeding. `pnpm run setup` creates it from `.env.example` when absent, derives `DATABASE_URL` from the local PostgreSQL settings, starts the database, applies Drizzle and pg-boss migrations, then seeds the reference tables. `pnpm run dev` starts all workspace development processes, including a future UI package.
-
-**Why:** One configuration file avoids copying package-specific environment files and lets the backend and migration tool target the same local database.
-
-**Trade-offs:** The setup script targets a local Compose database and refuses an existing `DATABASE_URL` that differs from its PostgreSQL settings. Other environments can provide variables through their process environment without using the local setup script. Docker is required for the local setup command.
-
-**Rejected:** Separate package `.env` files, because they duplicate the database connection and can drift apart.
-
-## Aircraft transit reports
-
-**Approach chosen:** `modules/aircraft-transits/` generates synthetic reports between any two seeded airports for a seeded aircraft. The path is computed with Turf: `@turf/distance` for the total, then `@turf/bearing` and `@turf/destination` place one waypoint per ~100 km (at least 2) along the great circle, with the first and last points set to the exact airport coordinates. Timestamps are linear in distance, speed is the aircraft's cruise speed, and altitude climbs linearly over the first 10% of the distance, cruises, and descends over the last 10%. Generation waits 1-3 seconds behind a `SimulationDelay` port, and time comes from a `Clock` port so specs use a zero delay and a fixed clock. Reports persist in `aircraft_transit_reports` with a jsonb `waypoints` column; the GeoJSON LineString is derived from the waypoints on read and is not stored.
-
-**Why:** Real flight data (OpenSky) and weather (NOAA) add network dependence, rate limits, and credentials without serving the task's goal of a queue-driven job with an observable result. Placing every waypoint from the origin along the initial bearing keeps one continuous point list across the antimeridian (RJTT to KSFO); `@turf/great-circle` splits such routes into a MultiLineString.
-
-**Rejected:** OpenSky and NOAA as data sources. `@turf/great-circle`, because of the antimeridian split.
-
-**Trade-offs:** Speed is constant at cruise speed, so it does not slow during climb or descent; this is acceptable for a mock. Waypoint longitudes stay within [-180, 180], so a map may draw an RJTT to KSFO line across the whole globe; a UI can unwrap longitudes.
-
-## Seeded reference data
-
-**Approach chosen:** `airports` (ICAO primary key, about 40 major airports) and `aircraft` (`acf_<ULID>` id, unique registration, about 8 real models) are reference tables in `packages/database`, filled by `pnpm db:seed` from committed TypeScript lists with `onConflictDoNothing`, so reruns create no duplicates. Reports reference them by foreign key.
-
-**Why:** Validation needs a closed, known set of airports and aircraft, and committed lists are reviewable and reproducible. The seed is a separate command, not a migration, so reference data can change without rewriting migration history.
-
-**Trade-offs:** A report cannot exist without its seeded rows, so removing a seeded airport or aircraft later requires handling its reports. Seed idempotency and the Drizzle adapter are verified only by `test:integration` and a manual seed-twice check, which need Docker and are outside `pnpm check`.
-
-## Transit request validation split
-
-**Approach chosen:** One private validator (`use-case/validate-transit-request.ts`) serves two public use cases. It uppercases ICAO codes, returns `SameAirportError` before any repository call, resolves airports (`UnknownAirportError` names the code), then the aircraft. `ValidateAircraftTransitRequestUseCase` adds the past-departure check (`DepartureInPastError`) for submission time and saves nothing. `GenerateAircraftTransitReportUseCase` runs the same validator without the past check.
-
-**Why:** A future job controller validates at submission, while a queued or retried job must not fail because time moved on. Sharing one validator keeps the other rules identical in both places.
-
-**Trade-offs:** The report controller and worker consumer are not built yet; only the two read endpoints (`GET /api/airports`, `GET /api/aircraft`) exist, both returning `{ items }` in the standard envelope.
-
-## Email job persistence and queue policy
-
-**Approach chosen:** Use pg-boss 12.35.0 for job pickup, scheduling, priority, retries, and claim recovery. Store a separate application `jobs` row with the same UUID, a unique UUID client submission key, a six-state public status, a nullable JSON result, and append-only `job_activity` rows with unique event keys. Malformed submission keys fail HTTP validation; every repeated valid key is rejected with HTTP 409, including an identical request; no request-body hash is stored. A completed email job's result contains its sent email ID, which gives `GET /api/jobs/:id` the link to the email without adding a job reference to emails sent synchronously through the API. Bridge Drizzle transactions into pg-boss with `fromDrizzle` so enqueue and cancellation update queue and application state together. One worker application discovers and registers every decorated queue handler at startup, so it picks up jobs from every registered queue. Queued emails use `email-job:<job UUID>` as a delivery key distinct from the submission key; the mock returns a deterministic receipt for that key, and `sent_emails.delivery_key` is unique and remains nullable for the existing synchronous path. The approved requirements and plan are in `goals/pg-boss-email-jobs/`.
-
-**Atomic enqueue:** `DrizzleJobRepository.create` opens one database transaction, takes a transaction-scoped advisory lock on the submission key, rechecks for a duplicate, inserts the `jobs` row and `created` activity, then calls pg-boss `send` with `db: fromDrizzle(tx, sql)`. The application rows and pg-boss row therefore commit together; an enqueue failure rolls all of them back. The earlier `findSubmission` check gives a prompt conflict result, while the in-transaction check and unique constraint protect concurrent submissions. Batch creation uses the same `insertQueuedJob(tx)` helper for every child inside one transaction, so a failed child enqueue rolls back its parent and all siblings as well. This transaction covers queue publication, not later worker execution or external delivery.
-
-**Why:** The application needs a durable submission-key constraint and readable activity beyond pg-boss's internal retention. A unique event key lets reconciliation or a retried transition record the same lifecycle event safely once. A separate delivery key lets the mock, and a future provider with server-side idempotency, avoid a second delivery after worker retry. Worker logs show pickup and attempt outcomes using queue name, job ID, and attempt number; the database activity log remains the durable history, and email content stays out of logs.
-
-**Setup:** `pnpm run setup` runs Drizzle migrations first, then invokes the backend-owned pg-boss migration command to create or upgrade its schema and register every queue in `QUEUES` (`email`, `webhook`, `aircraft-report`), then seeds airport and aircraft reference data. API and worker start pg-boss with `migrate: false` and verify each queue exists without running DDL. Setup owns schema changes and reference-data readiness before either process starts. The seed uses conflict-safe inserts, so repeating setup does not duplicate reference rows.
-
-**Trade-offs and items to verify:** Each queue's `work()` registration has its own `localConcurrency` limit (default 1); with multiple queues in one worker process, their limits add up and there is no single process-wide cap. This keeps queue configuration independent but lets queues compete for the process's CPU, memory, and database connections. The JSON result is flexible for later job types but cannot use a foreign key to `sent_emails`; the worker must write the ID returned by the email use case and integration tests must verify it resolves to the sent record. Queue state and application state must be reconciled after a crash between an event write and queue settlement. A local transaction cannot make a future external email provider call exactly once; its API must honor the delivery key. The implementation must verify pg-boss transaction and terminal-failure APIs against the installed release. Priority orders eligible jobs but does not preempt active work.
-
-**Rejected:** Using pg-boss singleton keys as the only idempotency mechanism, because they do not protect an external send after a worker crash; storing only the latest event, because retries need an audit trail.
-
-## Job service and persistence boundary
-
-**Approach chosen:** `JobService` owns queue-state interpretation for reads and interrupted-job reconciliation and attempt lifecycle decisions. The job repository exposes focused storage operations and retains Drizzle queries. Status, result, and activity writes for an attempt remain in one repository transaction. Cancellation stays atomic inside a repository transaction with the pg-boss row lock and queue bridge.
-
-**Why:** Reading queue state and deciding public status or activity are application decisions, while database access belongs in the repository.
-
-**Trade-off:** The service still relies on a repository cancellation operation that combines several writes; splitting those calls across service-level awaits would lose the existing transaction and pickup safety. Queue reconciliation on GET remains best-effort and idempotent through unique event keys.
-
-## Webhook and aircraft report jobs: duplicate external calls after a crash
-
-**Approach chosen:** Webhook delivery and aircraft report generation run as queued jobs on their own queues, with routes per queue (`POST /api/jobs/email`, `/webhook`, `/aircraft-report`) that follow the email rules: a UUID submission key checked first (409 on any repeat), then schedule validation, pg-boss retries (delays 5, 10, then 30 s, see "Retry delay schedule"; 4 attempts by default, later made per job, see "Job rows for the web UI") from one shared policy in `common/queue/retry-policy.ts`, and append-only `job_activity`. `jobs.queue` records which queue owns a row, so `GET` and `DELETE /api/jobs/:id` work for all three, and `jobs.result` is a union: `{ emailId }`, `{ webhookCallId }`, or `{ reportId }`. `QUEUES` in `common/queue/queue.service.ts` lists the queues; `pnpm run setup` creates them and API and worker startup refuse a missing one. The aircraft route runs the public `ValidateAircraftTransitRequestUseCase` at submission (HTTP 400, including the past-departure check); the worker calls `GenerateAircraftTransitReportUseCase`, which has no past check, so a retried job does not fail as time passes. Unknown airport, unknown aircraft, same airport, and malformed payloads go straight to dead-letter because a retry cannot change the outcome; thrown errors and webhook delivery failures are retryable. Nothing is deployed, so the schema was rewritten and migrations regenerated from `0000` without backfill; reset a development database with `docker compose down -v && pnpm run setup`.
-
-**Why:** A worker can crash after an external side effect and before the job is marked complete, so pg-boss will run the job again. Each side effect therefore has a per-job key that makes the repeat harmless. The webhook delivery key is `webhook-job:<jobId>`: the mock client derives its receipt from it, and a partial unique index on `webhook_calls(job_id) WHERE outcome = 'succeeded'` keeps one success per job; a repeated success resolves to the stored record, so the job result points at it. `aircraft_transit_reports.job_id` is unique and `saveReport` returns the existing report for a repeated job, so a retry produces one report. Webhook logs carry only queue, job ID, attempt, and outcome, never the URL or payload.
-
-**Trade-offs and items to verify:** The key makes a repeat safe only if the provider honors it server-side; the mock does, and a real webhook receiver must accept the key (for example as an idempotency header) or may receive the call twice. Delivery and its record cannot share a transaction, so a crash between them can leave a delivered call without a record until the retry writes it. Retrying also re-runs the simulated 1 to 3 second report delay. The queue name list is duplicated in `scripts/migrate-queue.mjs` because a plain script cannot import the TypeScript source; a unit test checks the two stay in sync. The integration suites share one database and run serially (`fileParallelism: false`) because any worker consumes every queue's jobs.
-
-**Rejected:** One generic route with a `queue` field, because payload schemas and error mapping differ per queue. A generic `queue` column without a result union, because the three results have different identities. Treating the repeated webhook success as an error, because the retry is expected and must complete the job.
-
-## Job rows for the web UI: payload, attempts, status, retry
-
-**Approach chosen:** The submitted payload and the job's attempt limit are stored on the `jobs` row (`payload` jsonb, `max_attempts`), written in the same transaction as the job and its pg-boss row. `GET /api/jobs` (paged, filtered, searchable), `GET /api/jobs/stats`, `GET /api/jobs/:id`, `POST /api/jobs/:id/retry`, and `GET /api/aircraft-transit-reports/:id` serve the web UI. Nothing is deployed, so the schema changed in place and migrations were regenerated from `0000`.
-
-**Why the payload lives on the row:** pg-boss deletes finished jobs after its retention period, and the UI must show the payload of old jobs. The row is the durable record, like the result and the activity log.
-
-**Per-job attempts:** Submissions take `maxAttempts` (1-10, default 4); pg-boss `retryLimit = maxAttempts - 1`. The handlers' terminal check reads the job's own `max_attempts` from the row (inside `JobService.recordFailure`, which returns `{ terminal }` to the handler) instead of the pg-boss `retryLimit`, because the work handler's job object carries no retry limit and a retry raises the row and the queue limit together, so they cannot disagree. The database check is only `max_attempts >= 1`: a retry raises the stored limit above the submission maximum of 10.
-
-**Effective status:** A job stays stored as `scheduled` while it waits, and nothing writes the moment it becomes eligible, so the list and stats compute the status in SQL: `scheduled` with an eligibility time in the past is `pending`. The eligibility time is pg-boss `start_after` (joined by queue and ID) and falls back to `jobs.start_at`, because a retry delay moves `start_after` past the original `start_at`; using only `start_at` would show a job waiting out its retry delay as pending. The status is never written by a read. `completedAt` is the latest terminal activity event while the job is terminal, and `attempts` counts `started` events. Trade-off: the join reads `pgboss.job`, a table owned by the library (only `id`, `name`, `start_after`); a pg-boss schema change would need this query revisited. Search uses `ILIKE` on the job ID and the jsonb payload text, so it does not use an index; acceptable at this scale.
-
-**Retry semantics:** pg-boss `retry` on a failed job sets its state to `retry`, raises `retry_limit` by one, and keeps `retry_count`, so exactly one more attempt becomes possible, numbered `retry_count + 2`. The repository therefore raises `max_attempts` by one, sets the status to `pending`, pulls the queue job's `start_after` to now (a dead-lettered job would otherwise wait out its retry delay), and appends a `retried:<n>` activity event, all in one transaction that locks the `jobs` row and the pg-boss row first, like cancellation. Two simultaneous retries grant one attempt (the loser sees a non-failed job and gets 409), and a worker pickup cannot interleave. `failed` events are now keyed `failed:<attempt>` so a retried job that fails terminally again records a second `failed` event. Known limitation: a job dead-lettered early (for example an invalid payload at attempt 1 of 4) and retried gets `max_attempts + 1`, so it has more than one attempt left; the plan says to bump by one, and the case is a dead end for input errors anyway.
-
-**Mock failures:** The webhook client fails on a one-in-three random roll for every URL, including those ending in `/503`; URL text never forces an outcome. The mock email client still always fails a recipient ending in `@bounce.test` (case-insensitive), while other recipients keep the 10% random failure. The URL and recipient stay out of errors and logs. The email shortcut lets the UI show retries on demand; webhook retries depend on the random roll.
-
-**Conflict details:** A repeated submission key stays HTTP 409 and now carries `error.details.existingJobId` so the UI can link to the existing job. The error envelope gained an optional `details` object for structured, non-sensitive facts.
-
-**Other choices:** `totalPages` is at least 1 (an empty list is one empty page). A malformed report ID returns 404 like an unknown one, since the ID is opaque to clients. The webhook `method` is validated, stored, and shown, but the mock ignores it.
-
-## Health check
-
-**Approach chosen:** `GET /api/health` (`CheckHealthUseCase` in `modules/health/`, controller in `api/endpoints/health/`) pings the database (`SELECT 1`) and the queue (pg-boss `getQueue` for the email queue), each with a 2 second timeout, and reuses the jobs repository's `countJobsByStatus` through `CountJobsByStatusUseCase` so the effective-status SQL exists once. It does not use `GetJobStatsUseCase`, which also calls pg-boss: with a hung queue that call would time out and wrongly report the database as down with zero counts. `status` is `ok` when both answer and `down` otherwise. It answers HTTP 200 for `ok` and 503 for `down`; the 503 uses the existing error envelope, with the full report (`status`, `checks`, `counts`) in `error.details` so the client still sees which check failed.
-
-**Why only database and queue, no worker tracking:** pg-boss has no worker registry, so showing "workers busy X of Y" would need a heartbeat table, a worker ID on jobs, and cleanup. The UI does not need it, and the dashboard row was removed. The queue check proves the API can reach pg-boss, not that a worker consumes; a stopped worker shows up as growing pending counts.
-
-**Zeros when the database is down:** counts need the database, so the response carries all six statuses as 0 instead of omitting them. The shape stays stable for the client; `checks.database` is what tells it the numbers are not real. The same applies when the count query fails or times out after the ping passed: the database is reported `down`.
-
-**No error text:** a failed or timed-out check only flips to `down`. Driver messages can name hosts or credentials, so they are dropped. Trade-off: the cause is not logged either, since the 503 goes through the envelope filter, which logs only the generic exception.
-
-**Trade-offs:** a hung check is abandoned, not cancelled (the pending promise finishes in the background). Each 503 is logged as a server error by the envelope filter, which is noisy if a probe polls a down service.
-
-## Retry delay schedule
-
-**Approach chosen:** After a failed attempt the next one waits 5 s (attempt 1 failed), 10 s (attempt 2), then 30 s for attempt 3 and every later attempt (`maxAttempts` reaches 10 and a manual retry adds more). The schedule is one function, `retryDelaySeconds(attempt)` in `common/queue/retry-policy.ts`. It replaces the earlier 60 s delay with exponential backoff, which made the first retry wait about a minute.
-
-**Why not pg-boss options:** pg-boss 12.35 offers a fixed `retryDelay` or `retryBackoff` with `retryDelayMax`. Backoff computes `retryDelay * (2^n / 2 + 2^n / 2 * random())`, so the delays double with random jitter and cannot be exactly 5, 10, 30. A fixed delay is one value for all attempts.
-
-**Mechanism:** jobs are enqueued with `retryBackoff: false` and `retryDelay: 5`. When an attempt starts, `JobService.recordStart` makes `writeJobTransition` also set `pgboss.job.retry_delay` to `retryDelaySeconds(attempt)`, in the same transaction that marks the job `processing`. When that attempt fails, pg-boss sets `start_after = now + retry_delay` itself. Because pg-boss applies the value, it holds for every kind of failure (handler result, crash, expiry), needs no write after the handler settles, and the public status keeps working: the job is `scheduled` while it waits and `pending` afterwards, and retry, cancellation and reconciliation are unchanged.
-
-**Trade-offs:** The code writes `retry_delay` with SQL on a table owned by pg-boss, because its `update` call refuses active jobs; like the other reads of `pgboss.job`, a pg-boss schema change needs this revisited. Jobs already queued before this change keep their stored 60 s delay with backoff until their next attempt starts, which then sets the new value. Nothing is deployed, so this does not matter now. The integration test asserts the stored `start_after` after each failure instead of waiting.
-
-## Persistent job batches
-
-**Approach chosen:** A batch is a durable parent row (`job_batches`: UUID, unique client batch key, shared `start_at`, nullable `cancellation_requested_at`, `created_at`) with 1-100 ordinary `jobs` rows as children (`jobs.batch_id` and 0-based `jobs.batch_position`, both null together for standalone jobs, unique per batch and position). Children are normal pg-boss jobs on the existing queues, so the existing workers, retry policy, delivery keys, and activity log apply unchanged. The accepted behavior is `goals/job-batches/facts.md`.
-
-**Why the parent is not queued:** a parent pg-boss job would need a batch worker that watches children, and a crash or missed wake-up would leave the parent stuck. Nothing needs to run for a batch: a scheduled batch is just every child scheduled at the same `startAt`. The parent only records identity, schedule, and cancellation intent.
-
-**Derived, never stored, progress:** batch status, status counts, and `progress = round(100 * (completed + failed + cancelled) / total)` are computed at read time from the child rows in one `REPEATABLE READ` read-only transaction, using the same effective-status SQL as standalone jobs (a due `scheduled` child is `pending`). No counter can drift from the children, and reads write nothing. Batch status differs from a child's job status: `scheduled` before a future start, `pending` when eligible and nothing started, `processing` after work begins while any child is unfinished, `completed` or `completed_with_errors` when all are terminal, and with a cancellation request `cancelling` while any child is unfinished then `cancelled` (this wins over the mix of child outcomes). `completed_with_errors` covers a failed child and an individually cancelled one.
-
-**Atomic creation:** the use case checks the batch key, then the shared schedule, then each child in order (aircraft requests use the same public validator as standalone jobs; an invalid child reports its 1-based position). `createBatch` takes one transaction and an advisory lock on the batch key, inserts the parent, then each child row, `created` event, and pg-boss job through the transaction bridge. Any failure, including a failed enqueue, rolls back everything. Clients send only the batch key; child submission keys are generated UUIDs in their own namespace.
-
-**Cancellation and the retry race:** one transaction locks the batch row, then the child rows by position, then their pg-boss rows by position (a worker transition locks its child row first, so the orders cannot deadlock). Children whose queue row is `created` or `retry` are cancelled with pg-boss `cancel` and get one `cancelled` event. For a child whose queue row is `active`, the transaction sets `pgboss.job.retry_limit = retry_count`, checked against pg-boss 12.35's failure SQL (`retry_count < retry_limit` decides retry versus `failed`), so that attempt cannot be retried however it ends. The stored child status is normalised to `processing` so a failure recorded a moment earlier does not leave a stale `scheduled` row. The application's terminal decision agrees: a failure write for a batch child checks `cancellation_requested_at` under the same child-row lock and records a terminal failure, which the handler settles as dead letter. Repeating the request returns the batch unchanged; a batch that finished without a request returns 409. Direct single-job cancel and manual retry return 409 for any child, which keeps one cancellation path.
-
-**Visible list change:** `GET /api/jobs` no longer lists batch children (they appear in batch detail and by `GET /api/jobs/:id`). Stats and health still count every execution job, children included, and never count parents. Consequence: the web sent-emails, webhooks, and reports pages, which read the default list, do not show batch children.
-
-**Web:** the client merges `GET /api/jobs` and `GET /api/job-batches` by creation time for the unfiltered jobs view; the batch list has no filters, so status and search are applied in the client (reading every batch page when a filter is set, only the needed pages otherwise). Batch statuses map to a coarse job status for the filter (`completed_with_errors` is `failed`, `cancelling` is `processing`), and the badge shows the exact status. Batch detail has its own route (`/batches/:id`). The in-browser batch mock and its runtime were removed; the rest of the mock server stays until its own replacement is in scope.
-
-**Batch activity feed:** `GET /api/job-batches/:id/activity` returns one feed for the whole batch (a synthetic "batch created" entry at `created_at`, every child's activity events tagged with job ID, queue, and 1-based position, and a "cancellation requested" entry at `cancellation_requested_at`), oldest first with a stable tie-break (time, then kind: batch created, cancellation requested, task events; then position; then event ID). Why an endpoint instead of the client fetching up to 100 child jobs: one request and one `REPEATABLE READ` snapshot replace up to 100 requests per second of the UI's refresh interval, and the merged order is decided once, in the use case, rather than re-sorted in the browser from reads taken at different moments. The synthetic entries are not stored: they come from the batch row, so nothing new is written and they cannot drift from it. Trade-offs: the response is unpaged (up to 100 children times a handful of events each; if batches grow past that it needs a cursor), it repeats data a child's own detail already holds, and a `cancelled` event of a child can share its timestamp with the request, which the tie-break orders after it. The web maps entries to the existing log shape ("Task 3 · webhook: ...") and polls the feed like the other hooks.
-
-**Trade-offs and open items:** the parent has no `priority`/`maxAttempts` column; the API reads them from the first child. `position` is stored 0-based and exposed 1-based, like the validation error position. A batch read returns every child's payload (up to 100), which is acceptable for the UI's read-only task view but would need paging for larger batches. A failure that settles between our check and pg-boss can leave the queue row at `failed` while the stored child status is `processing`; the worker recovery pass reconciles such rows. The integration suite `api/endpoints/job-batches/job-batches.e2e-spec.ts` (mixed completion, rollback, cancellation orderings) passed against a migrated, seeded scratch database together with the other integration suites. Drizzle omits table qualifiers inside `sql` templates, so the parent's `priority`/`maxAttempts` subqueries use literal table names. **(verify)** the web UI was not exercised in a browser (no browser tool was available).
+TODO

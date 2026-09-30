@@ -17,7 +17,7 @@
 The repo itself is the agents' memory:
 
 - `AGENTS.md` in the root and in every package: how to write code there, and why.
-- `DECISIONS.md`: every design decision, with trade-offs and rejected options.
+- `WORKING_DECISIONS.md`: every design decision made while building, with trade-offs and rejected options. `DECISIONS.md` is the short submission version, written by me.
 - `goals/<name>/`: what we are building now (`facts.md` for requirements, `plan.md` for the plan).
 - `GLOSSARY.md`: shared domain vocabulary.
 

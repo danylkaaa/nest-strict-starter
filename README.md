@@ -10,11 +10,28 @@ pnpm run setup
 pnpm run dev
 ```
 
-1. `pnpm install` installs workspace dependencies. Use this command, not `pnpm run install`.
-2. `pnpm run setup` copies `.env.example` to the root `.env` when missing, derives `DATABASE_URL` from its PostgreSQL settings, starts PostgreSQL, waits for it to be healthy, applies the Drizzle and pg-boss migrations, and seeds the `airports` and `aircraft` reference tables. You can run it again after pulling new migrations; seeding is safe to repeat.
-3. `pnpm run dev` starts the backend API, two queue workers, and the database package's build watcher. The backend uses port 3000 unless `http__port` in `.env` changes it. Stop the development processes with Ctrl+C.
+## Links
 
-The API enqueues jobs; the two dev workers deliver them (`pnpm --filter backend worker:dev` starts one extra). For a production build, run `pnpm build` and then `pnpm --filter backend worker:start` in the worker process.
+- Swagger UI at [http://localhost:3000/api/docs](http://localhost:3000/api/docs)
+- Web UI at [http://localhost:5173]('http://localhost:5173')
+
+## Diagrams
+
+Excalidraw diagrams in [`docs/`](./docs). Open them at [excalidraw.com](https://excalidraw.com) (drag the file in) or with the Excalidraw VS Code extension.
+
+<p align="center">
+<a href="./docs/system-overview.png"><img src='./docs/system-overview.png' width="400px"/></a>
+<p/>
+
+<p align="center">
+<a href="./docs/api-structure.png"><img src='./docs/api-structure.png' width="400px"/></a>
+<p/>
+
+<p align="center">
+<a href="./docs/pg-boss-jobs.png"><img src='./docs/pg-boss-jobs.png' width="400px"/></a>
+<p/>
+
+## Screenshots
 
 <p align="center">
 <img src='./docs/dashboard.png' width="400px"/>
@@ -41,6 +58,11 @@ pnpm --filter web test            # web only
 pnpm --filter backend test:watch  # rerun backend tests while editing
 ```
 
+## API Doc
+
+Open [Swagger UI](http://localhost:3000/api/docs) to confirm the API is running.
+
+After seeding, `GET /api/airports` lists airports sorted by ICAO code and `GET /api/aircraft` lists aircraft sorted by registration.
 The normal `test` scripts run `*.spec.ts` files. `pnpm check` also runs unit tests alongside type checking, linting, formatting, and dependency checks; it does not run E2E tests.
 
 ### E2E and database integration tests
@@ -113,12 +135,6 @@ curl -X POST http://localhost:3000/api/job-batches \
 | `DELETE /api/job-batches/:id`       | Records the cancellation request and cancels every unclaimed child; a running child finishes or fails but is not retried. Repeating it returns the batch unchanged; 404 unknown, 409 when every child finished and the batch was never cancelled.                                                                                                |
 
 Batch status is derived from its children when read and is not the same as a child job status: `scheduled`, `pending`, `processing`, `completed`, `completed_with_errors` (a child failed or was cancelled on its own), `cancelling` (cancellation requested, a child still running), and `cancelled`. `progress` is `round(100 * (completed + failed + cancelled) / total)`; a processing child does not count. `GET /api/jobs` lists standalone jobs only: batch children are left out (read them through the batch or by ID), and the single-job cancel and retry endpoints return 409 for a child. `GET /api/jobs/stats` and `GET /api/health` still count every execution job, children included, never the batch parents.
-
-## API Doc
-
-Open [Swagger UI](http://localhost:3000/api/docs) to confirm the API is running.
-
-After seeding, `GET /api/airports` lists airports sorted by ICAO code and `GET /api/aircraft` lists aircraft sorted by registration.
 
 ## Current backend layout
 
