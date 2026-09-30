@@ -1,0 +1,46 @@
+{
+  "decision": "submitted",
+  "stage": "interview",
+  "result": {
+    "stage": "interview",
+    "title": "Aircraft transit report: follow-up",
+    "goalSlug": "aircraft-transit-report",
+    "answers": [
+      {
+        "questionId": "airport-source",
+        "selectedOptionIds": [],
+        "customAnswer": "OpenSky API ",
+        "answer": "OpenSky API",
+        "completed": true
+      },
+      {
+        "questionId": "validation-design",
+        "selectedOptionIds": ["two-use-cases"],
+        "customAnswer": "",
+        "answer": "Validate + Generate use cases, shared private validator",
+        "completed": true
+      },
+      {
+        "questionId": "past-at-pickup",
+        "selectedOptionIds": [],
+        "customAnswer": "investigate opensky api and say what reports we can generate",
+        "answer": "investigate opensky api and say what reports we can generate",
+        "completed": true
+      },
+      {
+        "questionId": "storage-shape",
+        "selectedOptionIds": ["columns-jsonb"],
+        "customAnswer": "",
+        "answer": "Scalar columns + jsonb waypoints",
+        "completed": true
+      },
+      {
+        "questionId": "read-use-cases",
+        "selectedOptionIds": ["get"],
+        "customAnswer": "",
+        "answer": "Get report by id",
+        "completed": true
+      }
+    ]
+  }
+}

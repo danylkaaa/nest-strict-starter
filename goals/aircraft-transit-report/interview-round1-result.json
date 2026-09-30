@@ -1,0 +1,74 @@
+{
+  "decision": "submitted",
+  "stage": "interview",
+  "result": {
+    "stage": "interview",
+    "title": "Aircraft transit report module",
+    "goalSlug": "aircraft-transit-report",
+    "answers": [
+      {
+        "questionId": "base-branch",
+        "selectedOptionIds": ["ff"],
+        "customAnswer": "",
+        "answer": "Yes, fast-forward to main",
+        "completed": true
+      },
+      {
+        "questionId": "input",
+        "selectedOptionIds": [],
+        "customAnswer": "can we use some API with such data? that will provide points for us",
+        "answer": "can we use some API with such data? that will provide points for us",
+        "completed": true
+      },
+      {
+        "questionId": "path-algorithm",
+        "selectedOptionIds": ["turf"],
+        "customAnswer": "",
+        "answer": "Great circle via Turf.js",
+        "completed": true
+      },
+      {
+        "questionId": "waypoints",
+        "selectedOptionIds": ["by-distance"],
+        "customAnswer": "",
+        "answer": "One per ~100 km (min 2)",
+        "completed": true
+      },
+      {
+        "questionId": "report-fields",
+        "selectedOptionIds": ["airports", "distance", "times", "aircraft", "waypoints", "geojson"],
+        "customAnswer": "",
+        "answer": "Origin/destination airport (code, name, city, lat/lon)\nDeparture + arrival time, duration\nGreat-circle distance (km)\nMock aircraft (model, registration, cruise speed)\nWaypoints with lat/lon, timestamp, altitude, speed\nGeoJSON LineString of the path",
+        "completed": true
+      },
+      {
+        "questionId": "times",
+        "selectedOptionIds": ["departure-only"],
+        "customAnswer": "",
+        "answer": "Departure given, arrival computed",
+        "completed": true
+      },
+      {
+        "questionId": "simulated-delay",
+        "selectedOptionIds": ["yes"],
+        "customAnswer": "",
+        "answer": "Yes, 1-3 s",
+        "completed": true
+      },
+      {
+        "questionId": "errors",
+        "selectedOptionIds": ["past", "same", "unknown"],
+        "customAnswer": "should be validated by controller when create job (will be done later), and by worker when pick up task. Let's design how it can be done",
+        "answer": "Unknown airport code\nOrigin equals destination\nDeparture in the past\nshould be validated by controller when create job (will be done later), and by worker when pick up task. Let's design how it can be done",
+        "completed": true
+      },
+      {
+        "questionId": "persistence",
+        "selectedOptionIds": ["db"],
+        "customAnswer": "",
+        "answer": "Yes, own table + repository",
+        "completed": true
+      }
+    ]
+  }
+}

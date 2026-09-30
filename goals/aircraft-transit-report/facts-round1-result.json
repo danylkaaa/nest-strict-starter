@@ -1,0 +1,198 @@
+{
+  "decision": "submitted",
+  "stage": "facts",
+  "result": {
+    "stage": "facts",
+    "title": "Aircraft transit report module",
+    "goalSlug": "aircraft-transit-report",
+    "facts": [
+      {
+        "id": "fact-1",
+        "text": "Scope is a backend feature module at `apps/backend/src/modules/aircraft-transits/` plus its database table. No HTTP controller, no worker consumer.",
+        "accepted": false,
+        "removed": false,
+        "comment": "endpoint to get available airports and aircraft. store in DB using seed",
+        "automatedVerification": false,
+        "recommendedAutomatedVerification": false
+      },
+      {
+        "id": "fact-2",
+        "text": "Reports are synthetic: any two airports, a Turf great-circle path, and a mock aircraft. OpenSky is not used.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": false,
+        "recommendedAutomatedVerification": false
+      },
+      {
+        "id": "fact-3",
+        "text": "Input is origin ICAO code, destination ICAO code, and departure time. Codes are compared case-insensitively.",
+        "accepted": true,
+        "removed": false,
+        "comment": "should exists in DB",
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-4",
+        "text": "Airport name, country, and lat/lon come from the NOAA aviationweather.gov airport API behind an `AirportDirectory` port. The base URL comes from an env variable.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-5",
+        "text": "If NOAA returns no airport for a code, the result is an `UnknownAirportError` naming that code.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-6",
+        "text": "If NOAA is unreachable, times out, or returns a non-2xx status, the result is an `AirportDirectoryUnavailableError`, marked as transient so the worker can retry later.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-7",
+        "text": "If origin equals destination, the result is a `SameAirportError`, returned before any NOAA call.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-8",
+        "text": "`ValidateAircraftTransitRequestUseCase` checks unknown airports, same airport, and departure in the past (`DepartureInPastError`). It returns the resolved airports and saves nothing.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-9",
+        "text": "`GenerateAircraftTransitReportUseCase` runs the same private validator except the past-departure check, so queued or retried jobs don't fail because time moved on.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-10",
+        "text": "The distance is the great-circle distance in km, computed with Turf.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-11",
+        "text": "The mock aircraft is picked from a static list of real models, each with a cruise speed. It gets a random registration.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-12",
+        "text": "Arrival time = departure time + distance / cruise speed. The report includes departure, arrival, and duration in minutes.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-13",
+        "text": "The path has one waypoint per ~100 km (at least 2), follows the great circle, and starts and ends exactly at the airport coordinates.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-14",
+        "text": "Each waypoint has lat, lon, timestamp, altitude (m), and speed (km/h). Timestamps increase from departure to arrival.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-15",
+        "text": "Altitude is 0 at both airports and cruise altitude in the middle, with a linear climb over the first 10% and descent over the last 10% of the distance.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-16",
+        "text": "A route crossing the antimeridian (e.g. RJTT → KSFO) still produces one continuous, valid waypoint list.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-17",
+        "text": "The report exposes the path as a GeoJSON LineString built from the waypoints in [lon, lat] order. It is not stored separately.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-18",
+        "text": "Generation simulates work with a random 1–3 s delay behind a replaceable seam. Tests use zero delay and fakes, with no real network calls.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-19",
+        "text": "Reports are saved in the `aircraft_transit_reports` table with id `atr_<ULID>`: scalar columns for airports, times, distance, and aircraft, plus a jsonb `waypoints` column. A migration is included.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-20",
+        "text": "`GetAircraftTransitReportUseCase` returns a saved report by id, or an `AircraftTransitReportNotFoundError`.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      },
+      {
+        "id": "fact-21",
+        "text": "Use cases return neverthrow `Result`s, with error classes owned by the feature. They contain no HTTP or retry decisions.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": false,
+        "recommendedAutomatedVerification": false
+      },
+      {
+        "id": "fact-22",
+        "text": "`DECISIONS.md`, `apps/backend/AGENTS.md`, and `.env.example` document the module, the NOAA source, the validation split, and the new env variable.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": false,
+        "recommendedAutomatedVerification": false
+      },
+      {
+        "id": "fact-23",
+        "text": "`pnpm check` passes.",
+        "accepted": true,
+        "removed": false,
+        "automatedVerification": true,
+        "recommendedAutomatedVerification": true
+      }
+    ],
+    "factsMarkdown": "# Facts\n\n- Reports are synthetic: any two airports, a Turf great-circle path, and a mock aircraft. OpenSky is not used.\n- Input is origin ICAO code, destination ICAO code, and departure time. Codes are compared case-insensitively.\n- Airport name, country, and lat/lon come from the NOAA aviationweather.gov airport API behind an `AirportDirectory` port. The base URL comes from an env variable.\n- If NOAA returns no airport for a code, the result is an `UnknownAirportError` naming that code.\n- If NOAA is unreachable, times out, or returns a non-2xx status, the result is an `AirportDirectoryUnavailableError`, marked as transient so the worker can retry later.\n- If origin equals destination, the result is a `SameAirportError`, returned before any NOAA call.\n- `ValidateAircraftTransitRequestUseCase` checks unknown airports, same airport, and departure in the past (`DepartureInPastError`). It returns the resolved airports and saves nothing.\n- `GenerateAircraftTransitReportUseCase` runs the same private validator except the past-departure check, so queued or retried jobs don't fail because time moved on.\n- The distance is the great-circle distance in km, computed with Turf.\n- The mock aircraft is picked from a static list of real models, each with a cruise speed. It gets a random registration.\n- Arrival time = departure time + distance / cruise speed. The report includes departure, arrival, and duration in minutes.\n- The path has one waypoint per ~100 km (at least 2), follows the great circle, and starts and ends exactly at the airport coordinates.\n- Each waypoint has lat, lon, timestamp, altitude (m), and speed (km/h). Timestamps increase from departure to arrival.\n- Altitude is 0 at both airports and cruise altitude in the middle, with a linear climb over the first 10% and descent over the last 10% of the distance.\n- A route crossing the antimeridian (e.g. RJTT → KSFO) still produces one continuous, valid waypoint list.\n- The report exposes the path as a GeoJSON LineString built from the waypoints in [lon, lat] order. It is not stored separately.\n- Generation simulates work with a random 1–3 s delay behind a replaceable seam. Tests use zero delay and fakes, with no real network calls.\n- Reports are saved in the `aircraft_transit_reports` table with id `atr_<ULID>`: scalar columns for airports, times, distance, and aircraft, plus a jsonb `waypoints` column. A migration is included.\n- `GetAircraftTransitReportUseCase` returns a saved report by id, or an `AircraftTransitReportNotFoundError`.\n- Use cases return neverthrow `Result`s, with error classes owned by the feature. They contain no HTTP or retry decisions.\n- `DECISIONS.md`, `apps/backend/AGENTS.md`, and `.env.example` document the module, the NOAA source, the validation split, and the new env variable.\n- `pnpm check` passes."
+  }
+}

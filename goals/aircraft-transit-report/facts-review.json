@@ -1,0 +1,215 @@
+{
+  "stage": "facts",
+  "title": "Aircraft transit report module",
+  "goalSlug": "aircraft-transit-report",
+  "facts": [
+    {
+      "id": "fact-1",
+      "text": "Scope: feature module `apps/backend/src/modules/aircraft-transits/`, its tables and seed, and two read endpoints (`GET /api/airports`, `GET /api/aircraft`). No report endpoint, no worker consumer.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-2",
+      "text": "Reports are synthetic: any two airports, a Turf great-circle path, and a mock aircraft. OpenSky is not used.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": false,
+      "recommendedAutomatedVerification": false
+    },
+    {
+      "id": "fact-3",
+      "text": "Input is origin ICAO code, destination ICAO code, aircraft id, and departure time. ICAO codes are compared case-insensitively.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-4",
+      "text": "Airports (ICAO, IATA, name, city, country, lat, lon) are stored in an `airports` table and seeded by `pnpm db:seed` from a committed list of ~40 major airports. Re-running the seed creates no duplicates.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-24",
+      "text": "Aircraft (id, model, registration, cruise speed km/h, cruise altitude m) are stored in an `aircraft` table and seeded the same way. Re-running the seed creates no duplicates.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-5",
+      "text": "An ICAO code not in the `airports` table gives an `UnknownAirportError` naming that code.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-25",
+      "text": "An aircraft id not in the `aircraft` table gives an `UnknownAircraftError`.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-7",
+      "text": "If origin equals destination, the result is a `SameAirportError`, returned before any database lookup.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-8",
+      "text": "`ValidateAircraftTransitRequestUseCase` checks unknown airports, unknown aircraft, same airport, and departure in the past (`DepartureInPastError`). It returns the resolved airports and aircraft and saves nothing.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-9",
+      "text": "`GenerateAircraftTransitReportUseCase` runs the same private validator except the past-departure check, so queued or retried jobs don't fail because time moved on.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": true,
+      "recommendedAutomatedVerification": true
+    },
+    {
+      "id": "fact-10",
+      "text": "The distance is the great-circle distance in km, computed with Turf.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": true,
+      "recommendedAutomatedVerification": true
+    },
+    {
+      "id": "fact-11",
+      "text": "The report uses the chosen aircraft's model, registration, and cruise speed.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-12",
+      "text": "Arrival time = departure time + distance / cruise speed. The report includes departure, arrival, and duration in minutes.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": true,
+      "recommendedAutomatedVerification": true
+    },
+    {
+      "id": "fact-13",
+      "text": "The path has one waypoint per ~100 km (at least 2), follows the great circle, and starts and ends exactly at the airport coordinates.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": true,
+      "recommendedAutomatedVerification": true
+    },
+    {
+      "id": "fact-14",
+      "text": "Each waypoint has lat, lon, timestamp, altitude (m), and speed (km/h). Timestamps increase from departure to arrival.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": true,
+      "recommendedAutomatedVerification": true
+    },
+    {
+      "id": "fact-15",
+      "text": "Altitude is 0 at both airports and the aircraft's cruise altitude in the middle, with a linear climb over the first 10% and descent over the last 10% of the distance.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-16",
+      "text": "A route crossing the antimeridian (e.g. RJTT \u2192 KSFO) still produces one continuous, valid waypoint list.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": true,
+      "recommendedAutomatedVerification": true
+    },
+    {
+      "id": "fact-17",
+      "text": "The report exposes the path as a GeoJSON LineString built from the waypoints in [lon, lat] order. It is not stored separately.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": true,
+      "recommendedAutomatedVerification": true
+    },
+    {
+      "id": "fact-18",
+      "text": "Generation simulates work with a random 1\u20133 s delay behind a replaceable seam. Unit tests use a zero delay and in-memory fakes.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-19",
+      "text": "Reports are saved in the `aircraft_transit_reports` table with id `atr_<ULID>`: foreign keys to origin, destination, and aircraft; scalar columns for times and distance; and a jsonb `waypoints` column. A migration is included.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-20",
+      "text": "`GetAircraftTransitReportUseCase` returns a saved report by id, or an `AircraftTransitReportNotFoundError`.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": true,
+      "recommendedAutomatedVerification": true
+    },
+    {
+      "id": "fact-26",
+      "text": "`GET /api/airports` returns every seeded airport sorted by ICAO code, in the standard envelope, documented in Swagger.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-27",
+      "text": "`GET /api/aircraft` returns every seeded aircraft sorted by registration, in the standard envelope, documented in Swagger.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-21",
+      "text": "Use cases return neverthrow `Result`s, with error classes owned by the feature. They contain no HTTP or retry decisions.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": false,
+      "recommendedAutomatedVerification": false
+    },
+    {
+      "id": "fact-22",
+      "text": "`DECISIONS.md`, `apps/backend/AGENTS.md`, `packages/database/AGENTS.md`, and `README.md` document the module, the seed, the validation split, and the two endpoints.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-23",
+      "text": "`pnpm check` passes.",
+      "accepted": true,
+      "removed": false,
+      "automatedVerification": true,
+      "recommendedAutomatedVerification": true
+    }
+  ]
+}

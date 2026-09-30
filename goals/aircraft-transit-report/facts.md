@@ -1,0 +1,28 @@
+# Facts
+
+- Scope: feature module `apps/backend/src/modules/aircraft-transits/`, its tables and seed, and two read endpoints (`GET /api/airports`, `GET /api/aircraft`). No report endpoint, no worker consumer.
+- Reports are synthetic: any two airports, a Turf great-circle path, and a mock aircraft. OpenSky is not used.
+- Input is origin ICAO code, destination ICAO code, aircraft id, and departure time. ICAO codes are compared case-insensitively.
+- Airports (ICAO, IATA, name, city, country, lat, lon) are stored in an `airports` table and seeded by `pnpm db:seed` from a committed list of ~40 major airports. Re-running the seed creates no duplicates.
+- Aircraft (id, model, registration, cruise speed km/h, cruise altitude m) are stored in an `aircraft` table and seeded the same way. Re-running the seed creates no duplicates.
+- An ICAO code not in the `airports` table gives an `UnknownAirportError` naming that code.
+- An aircraft id not in the `aircraft` table gives an `UnknownAircraftError`.
+- If origin equals destination, the result is a `SameAirportError`, returned before any database lookup.
+- `ValidateAircraftTransitRequestUseCase` checks unknown airports, unknown aircraft, same airport, and departure in the past (`DepartureInPastError`). It returns the resolved airports and aircraft and saves nothing.
+- `GenerateAircraftTransitReportUseCase` runs the same private validator except the past-departure check, so queued or retried jobs don't fail because time moved on.
+- The distance is the great-circle distance in km, computed with Turf.
+- The report uses the chosen aircraft's model, registration, and cruise speed.
+- Arrival time = departure time + distance / cruise speed. The report includes departure, arrival, and duration in minutes.
+- The path has one waypoint per ~100 km (at least 2), follows the great circle, and starts and ends exactly at the airport coordinates.
+- Each waypoint has lat, lon, timestamp, altitude (m), and speed (km/h). Timestamps increase from departure to arrival.
+- Altitude is 0 at both airports and the aircraft's cruise altitude in the middle, with a linear climb over the first 10% and descent over the last 10% of the distance.
+- A route crossing the antimeridian (e.g. RJTT → KSFO) still produces one continuous, valid waypoint list.
+- The report exposes the path as a GeoJSON LineString built from the waypoints in [lon, lat] order. It is not stored separately.
+- Generation simulates work with a random 1–3 s delay behind a replaceable seam. Unit tests use a zero delay and in-memory fakes.
+- Reports are saved in the `aircraft_transit_reports` table with id `atr_<ULID>`: foreign keys to origin, destination, and aircraft; scalar columns for times and distance; and a jsonb `waypoints` column. A migration is included.
+- `GetAircraftTransitReportUseCase` returns a saved report by id, or an `AircraftTransitReportNotFoundError`.
+- `GET /api/airports` returns every seeded airport sorted by ICAO code, in the standard envelope, documented in Swagger.
+- `GET /api/aircraft` returns every seeded aircraft sorted by registration, in the standard envelope, documented in Swagger.
+- Use cases return neverthrow `Result`s, with error classes owned by the feature. They contain no HTTP or retry decisions.
+- `DECISIONS.md`, `apps/backend/AGENTS.md`, `packages/database/AGENTS.md`, and `README.md` document the module, the seed, the validation split, and the two endpoints.
+- `pnpm check` passes.

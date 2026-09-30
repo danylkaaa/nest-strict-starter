@@ -1,0 +1,74 @@
+{
+  "stage": "interview",
+  "title": "Aircraft transit report: follow-up",
+  "goalSlug": "aircraft-transit-report",
+  "questions": [
+    {
+      "id": "airport-source",
+      "prompt": "Airport data source (resolves codes to name, country, lat/lon)",
+      "description": "No free, keyless API returns flight paths for any two airports. OpenSky has real tracks, but it looks them up by aircraft and needs an account for history. So an API supplies the airport points, and Turf computes the path between them. I tested these sources today:\n\nA) NOAA aviationweather.gov /api/data/airport: free, no key, JSON with lat/lon. Uses ICAO codes (EGLL, KJFK, UKBB); IATA lookup ('LHR') returned nothing. Returns an empty array for unknown codes. Rate limit is about 100 requests/min.\n\nB) OurAirports CSV: public domain, no key, 12.7 MB, includes IATA codes and cities. A script imports it once into an `airports` table, and lookups read the database.\n\nC) Keyed APIs (aviationstack, AirLabs, API Ninjas): free tiers need a key and have low limits.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "A) NOAA live API behind an `AirportDirectory` port. It matches your 'use an API' ask and needs no key. A network failure is a transient error the worker can retry. Tests use a fake directory.",
+      "recommendedOptionIds": ["noaa"],
+      "options": [
+        { "id": "noaa", "label": "A) NOAA API, ICAO codes, live" },
+        { "id": "ourairports", "label": "B) OurAirports CSV imported into DB, IATA codes" },
+        { "id": "keyed", "label": "C) Keyed API (say which)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "validation-design",
+      "prompt": "How should validation be shared by job submission (controller, later) and worker pickup?",
+      "description": "Shape checks (code format, ISO date) are Zod DTOs in api/ and worker/, per AGENTS.md. Business checks (airport exists, origin != destination, departure not in the past) belong to the module.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "The module exposes two public use cases: `ValidateAircraftTransitRequestUseCase` (checks only, returns Result<ResolvedRequest, TransitRequestError>) and `GenerateAircraftTransitReportUseCase`, which runs the same private validator first, then generates and saves. The later job-submit controller calls Validate; the worker calls Generate. Errors are typed classes: permanent (UnknownAirport, SameAirport, DepartureInPast) vs transient (AirportDirectoryUnavailable). The worker maps permanent errors to 'fail, no retry' and transient ones to 'retry'.",
+      "recommendedOptionIds": ["two-use-cases"],
+      "options": [
+        {
+          "id": "two-use-cases",
+          "label": "Validate + Generate use cases, shared private validator"
+        },
+        { "id": "generate-only", "label": "Generate only; submission does shape checks only" }
+      ],
+      "required": true
+    },
+    {
+      "id": "past-at-pickup",
+      "prompt": "At worker pickup, the departure may have passed since submission (queue delay, scheduled job, retries). What happens?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Check 'departure not in the past' only at submission (Validate use case). Generate still checks airports and same-origin, but not the past-departure rule, so queued or retried jobs don't fail because time moved on.",
+      "recommendedOptionIds": ["submit-only"],
+      "options": [
+        { "id": "submit-only", "label": "Check past only at submission" },
+        { "id": "both", "label": "Check at both; pickup fails permanently if past" },
+        { "id": "relative", "label": "Pickup compares to job's createdAt instead of now" }
+      ],
+      "required": true
+    },
+    {
+      "id": "storage-shape",
+      "prompt": "How should the report be stored?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Table `aircraft_transit_reports`, id `atr_<ULID>`. Columns: origin/destination code, departure_at, arrival_at, distance_km, and aircraft fields. Waypoints go in a jsonb column; GeoJSON is built from the waypoints when read, not stored.",
+      "recommendedOptionIds": ["columns-jsonb"],
+      "options": [
+        { "id": "columns-jsonb", "label": "Scalar columns + jsonb waypoints" },
+        { "id": "one-jsonb", "label": "Whole report as one jsonb column" }
+      ],
+      "required": true
+    },
+    {
+      "id": "read-use-cases",
+      "prompt": "Besides generate(+save), which read use cases are in scope now?",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Get by id only (the future job result and map UI will need it). No list.",
+      "recommendedOptionIds": ["get"],
+      "options": [
+        { "id": "get", "label": "Get report by id" },
+        { "id": "list", "label": "List reports (cursor, like emails)" }
+      ],
+      "required": false
+    }
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "stage": "interview",
+  "title": "Aircraft transit report module",
+  "goalSlug": "aircraft-transit-report",
+  "questions": [
+    {
+      "id": "base-branch",
+      "prompt": "This worktree is 1 commit behind main (main has docs/task.md and the emails reference module). Fast-forward zealous-kiwi to main first?",
+      "answerMode": "single",
+      "recommendedAnswer": "Yes, fast-forward (clean worktree, no local commits to lose).",
+      "recommendedOptionIds": ["ff"],
+      "options": [
+        { "id": "ff", "label": "Yes, fast-forward to main" },
+        { "id": "stay", "label": "No, build on current branch" }
+      ],
+      "required": true
+    },
+    {
+      "id": "input",
+      "prompt": "What does the use case take as origin and destination?",
+      "description": "Task allows made-up data or any free public API.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "IATA codes resolved against a small bundled static airport list (~20-30 major airports with name, city, country, lat/lon). No network calls.",
+      "recommendedOptionIds": ["iata-static"],
+      "options": [
+        { "id": "iata-static", "label": "IATA codes, bundled static list" },
+        { "id": "iata-package", "label": "IATA codes, full npm airport dataset" },
+        { "id": "coords", "label": "Raw lat/lon points only" },
+        { "id": "both", "label": "IATA code or raw coordinates" }
+      ],
+      "required": true
+    },
+    {
+      "id": "path-algorithm",
+      "prompt": "How should the path be generated?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Great-circle route via a library (@turf/great-circle + @turf/distance), library-first per AGENTS.md.",
+      "recommendedOptionIds": ["turf"],
+      "options": [
+        { "id": "turf", "label": "Great circle via Turf.js" },
+        { "id": "handwritten", "label": "Hand-written haversine + interpolation" },
+        { "id": "straight", "label": "Straight lat/lon line" }
+      ],
+      "required": true
+    },
+    {
+      "id": "waypoints",
+      "prompt": "How many points in the path?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Fixed 50 waypoints including origin and destination.",
+      "recommendedOptionIds": ["fixed"],
+      "options": [
+        { "id": "fixed", "label": "Fixed count (50)" },
+        { "id": "by-distance", "label": "One per ~100 km (min 2)" },
+        { "id": "input", "label": "Caller chooses" }
+      ],
+      "required": true
+    },
+    {
+      "id": "report-fields",
+      "prompt": "What goes in the report?",
+      "description": "Waypoint details feed the bonus map hover later.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "All of them.",
+      "recommendedOptionIds": ["airports", "times", "distance", "aircraft", "waypoints", "geojson"],
+      "options": [
+        { "id": "airports", "label": "Origin/destination airport (code, name, city, lat/lon)" },
+        { "id": "times", "label": "Departure + arrival time, duration" },
+        { "id": "distance", "label": "Great-circle distance (km)" },
+        { "id": "aircraft", "label": "Mock aircraft (model, registration, cruise speed)" },
+        { "id": "waypoints", "label": "Waypoints with lat/lon, timestamp, altitude, speed" },
+        { "id": "geojson", "label": "GeoJSON LineString of the path" }
+      ],
+      "required": true
+    },
+    {
+      "id": "times",
+      "prompt": "How are dates handled?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Caller gives departure time; arrival is computed from distance and cruise speed.",
+      "recommendedOptionIds": ["departure-only"],
+      "options": [
+        { "id": "departure-only", "label": "Departure given, arrival computed" },
+        { "id": "both-given", "label": "Caller gives both; validate order" },
+        { "id": "generated", "label": "Both generated randomly" }
+      ],
+      "required": true
+    },
+    {
+      "id": "simulated-delay",
+      "prompt": "Simulate generation work with a delay (like the email mock's 1-3 s)?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Yes, 1-3 s in a replaceable generator/aircraft adapter; tests inject a zero-delay fake.",
+      "recommendedOptionIds": ["yes"],
+      "options": [
+        { "id": "yes", "label": "Yes, 1-3 s" },
+        { "id": "no", "label": "No delay" }
+      ],
+      "required": true
+    },
+    {
+      "id": "errors",
+      "prompt": "Which expected failures return a Result error?",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Unknown airport code and same origin/destination.",
+      "recommendedOptionIds": ["unknown", "same"],
+      "options": [
+        { "id": "unknown", "label": "Unknown airport code" },
+        { "id": "same", "label": "Origin equals destination" },
+        { "id": "past", "label": "Departure in the past" }
+      ],
+      "required": true
+    },
+    {
+      "id": "persistence",
+      "prompt": "Persist the report?",
+      "answerMode": "single",
+      "recommendedAnswer": "No. Return it; the future job worker stores it as the job result.",
+      "recommendedOptionIds": ["none"],
+      "options": [
+        { "id": "none", "label": "No, return only" },
+        { "id": "db", "label": "Yes, own table + repository" }
+      ],
+      "required": true
+    }
+  ]
+}
