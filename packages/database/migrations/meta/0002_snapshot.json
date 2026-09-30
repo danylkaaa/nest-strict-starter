@@ -1,0 +1,176 @@
+{
+  "id": "49b4c047-718d-48fa-b879-65345cc2dea4",
+  "prevId": "d9f3dc25-a099-413d-bf03-8cccad69b49d",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.sent_emails": {
+      "name": "sent_emails",
+      "schema": "",
+      "columns": {
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipient": {
+          "name": "recipient",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "sent_emails_message_id_unique": {
+          "name": "sent_emails_message_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["message_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "sent_emails_id_format": {
+          "name": "sent_emails_id_format",
+          "value": "\"sent_emails\".\"id\" ~ '^eml_[0-7][0-9A-HJKMNP-TV-Z]{25}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.webhook_calls": {
+      "name": "webhook_calls",
+      "schema": "",
+      "columns": {
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_name": {
+          "name": "error_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "response_value": {
+          "name": "response_value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "webhook_calls_job_id_id_idx": {
+          "name": "webhook_calls_job_id_id_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "webhook_calls_id_format": {
+          "name": "webhook_calls_id_format",
+          "value": "\"webhook_calls\".\"id\" ~ '^whc_[0-7][0-9A-HJKMNP-TV-Z]{25}$'"
+        },
+        "webhook_calls_outcome_valid": {
+          "name": "webhook_calls_outcome_valid",
+          "value": "\"webhook_calls\".\"outcome\" IN ('succeeded', 'failed')"
+        },
+        "webhook_calls_result_consistency": {
+          "name": "webhook_calls_result_consistency",
+          "value": "(\"webhook_calls\".\"outcome\" = 'succeeded' AND \"webhook_calls\".\"request_id\" IS NOT NULL AND \"webhook_calls\".\"response_value\" IS NOT NULL AND \"webhook_calls\".\"response_value\" BETWEEN 0 AND 999999 AND \"webhook_calls\".\"error_name\" IS NULL AND \"webhook_calls\".\"error_message\" IS NULL) OR (\"webhook_calls\".\"outcome\" = 'failed' AND \"webhook_calls\".\"request_id\" IS NULL AND \"webhook_calls\".\"response_value\" IS NULL AND \"webhook_calls\".\"error_name\" IS NOT NULL AND \"webhook_calls\".\"error_message\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

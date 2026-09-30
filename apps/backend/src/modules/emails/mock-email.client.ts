@@ -3,13 +3,12 @@ import { setTimeout } from 'node:timers/promises';
 
 import { Injectable } from '@nestjs/common';
 
-import { EmailClient } from './email-client.js';
-
 import type { EmailContent } from './email.js';
+import type { EmailClient } from './ports/email-client.js';
 
 @Injectable()
-export class MockEmailClient extends EmailClient {
-  override async send(_content: EmailContent): Promise<{ messageId: string }> {
+export class MockEmailClient implements EmailClient {
+  async send(_content: EmailContent): Promise<{ messageId: string }> {
     await setTimeout(randomInt(1000, 3001));
     return { messageId: `mock_${randomUUID()}` };
   }

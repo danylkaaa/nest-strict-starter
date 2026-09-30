@@ -1,17 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ok } from 'neverthrow';
 
-import { EmailClient } from '@/modules/emails/email-client.js';
-import { EmailRepository } from '@/modules/emails/email.repository.js';
+import { EMAIL_CLIENT } from '@/modules/emails/ports/email-client.js';
+import { EMAIL_REPOSITORY } from '@/modules/emails/ports/email.repository.js';
 
 import type { EmailContent, SentEmail } from '@/modules/emails/email.js';
+import type { EmailClient } from '@/modules/emails/ports/email-client.js';
+import type { EmailRepository } from '@/modules/emails/ports/email.repository.js';
 import type { Result } from 'neverthrow';
 
 @Injectable()
 export class SendEmailUseCase {
   constructor(
-    private readonly client: EmailClient,
-    private readonly repository: EmailRepository,
+    @Inject(EMAIL_CLIENT) private readonly client: EmailClient,
+    @Inject(EMAIL_REPOSITORY) private readonly repository: EmailRepository,
   ) {}
 
   async execute(input: EmailContent): Promise<Result<SentEmail, never>> {
