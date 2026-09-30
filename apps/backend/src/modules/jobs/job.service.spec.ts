@@ -103,6 +103,23 @@ describe('job service', () => {
     expect(job?.completedAt).toBeInstanceOf(Date);
   });
 
+  it.each([
+    { attempt: 1, delay: 5 },
+    { attempt: 2, delay: 10 },
+    { attempt: 3, delay: 30 },
+    { attempt: 7, delay: 30 },
+  ])(
+    'sets the retry delay for a failure of attempt $attempt to $delay s when it starts',
+    async ({ attempt, delay }) => {
+      const repository = fakeJobRepository();
+      await new JobService(repository).recordStart('job-1', attempt);
+      expect(repository.writeJobTransition).toHaveBeenCalledWith(
+        'job-1',
+        expect.objectContaining({ retryDelaySeconds: delay, status: 'processing' }),
+      );
+    },
+  );
+
   it('stores the result object on completion', async () => {
     const repository = fakeJobRepository();
     await new JobService(repository).recordCompletion('job-1', 2, { webhookCallId: 'whc_1' });

@@ -18,6 +18,18 @@ pnpm run dev
 
 The API enqueues jobs; the two dev workers deliver them (`pnpm --filter backend worker:dev` starts one extra). For a production build, run `pnpm build` and then `pnpm --filter backend worker:start` in the worker process.
 
+<p align="center">
+<img src='./docs/dashboard.png' width="400px"/>
+<p/>
+
+<p align="center">
+<img src='./docs/aircraft.png' width="400px"/>
+<p/>
+
+<p align="center">
+<img src='./docs/webhooks.png' width="400px"/>
+<p/>
+
 ## Run tests
 
 Run these commands from the repository root.
@@ -83,7 +95,7 @@ curl -X POST http://localhost:3000/api/jobs/aircraft-report \
 | `DELETE /api/jobs/:id`                  | Cancels a pending or scheduled job.                                                                                                                                                                                                                                                                   |
 | `GET /api/aircraft-transit-reports/:id` | The generated report (`reportId` in an aircraft report job's `result`) with its waypoints.                                                                                                                                                                                                            |
 
-Every submission accepts an optional `maxAttempts` (1-10, default 4); a webhook `payload` accepts an optional `method` (`POST` or `PUT`, default `POST`, stored but not sent by the mock). A repeated `idempotencyKey` returns HTTP 409 with `error.details.existingJobId`. Mock webhook delivery fails randomly on 10% of attempts, regardless of URL. To demo email retries, use a recipient ending in `@bounce.test`: the mock email client always fails those.
+Every submission accepts an optional `maxAttempts` (1-10, default 4); a failed attempt is retried after 5 s, then 10 s, then 30 s for every later attempt; a webhook `payload` accepts an optional `method` (`POST` or `PUT`, default `POST`, stored but not sent by the mock). A repeated `idempotencyKey` returns HTTP 409 with `error.details.existingJobId`. Mock webhook delivery fails randomly on 10% of attempts, regardless of URL. To demo email retries, use a recipient ending in `@bounce.test`: the mock email client always fails those.
 
 ## API Doc
 

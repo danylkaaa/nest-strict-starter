@@ -18,6 +18,8 @@ export interface JobLogWrite {
 export interface JobTransition {
   status: Job['status'];
   result?: JobResult;
+  /** Sets the pg-boss job's fixed retry delay in the same transaction. */
+  retryDelaySeconds?: number;
   logs: JobLogWrite[];
 }
 

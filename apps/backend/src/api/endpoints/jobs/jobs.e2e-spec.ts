@@ -17,6 +17,7 @@ import { EmailDeliveryFailedError } from '@/modules/emails/email.errors.js';
 import { EMAIL_CLIENT } from '@/modules/emails/ports/email-client.js';
 import { SendEmailUseCase } from '@/modules/emails/use-case/send-email.use-case.js';
 import { CompleteJobUseCase } from '@/modules/jobs/use-case/complete-job.use-case.js';
+import { FailJobAttemptUseCase } from '@/modules/jobs/use-case/fail-job-attempt.use-case.js';
 import { ReconcileJobsUseCase } from '@/modules/jobs/use-case/reconcile-jobs.use-case.js';
 import { StartJobAttemptUseCase } from '@/modules/jobs/use-case/start-job-attempt.use-case.js';
 import { WorkerModule } from '@/worker/worker.module.js';
@@ -170,8 +171,8 @@ describe('email jobs API and worker', () => {
     const [queued] = await queue.boss.findJobs(EMAIL_QUEUE, { id: first.data.id });
     expect(queued?.priority).toBe(5);
     expect(queued?.retryLimit).toBe(3);
-    expect(queued?.retryDelay).toBe(60);
-    expect(queued?.retryBackoff).toBe(true);
+    expect(queued?.retryDelay).toBe(5);
+    expect(queued?.retryBackoff).toBe(false);
   });
 
   it('documents job error envelopes in OpenAPI', async () => {
@@ -467,7 +468,47 @@ describe('email jobs API and worker', () => {
     expect(row?.status).toBe('failed');
   });
 
-  it('records a failed attempt and schedules the retry after 60 seconds', async () => {
+  it('delays the next attempt by 5, 10, then 30 seconds after each failure', async () => {
+    const createResponse = await fetch(`${baseUrl}/api/jobs/email`, {
+      body: JSON.stringify({
+        idempotencyKey: randomUUID(),
+        maxAttempts: 5,
+        payload,
+        priority: 5,
+        type: 'instant',
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    const created = createdSchema.parse(await createResponse.json());
+    expect(createResponse.status).toBe(202);
+    const id = created.data.id;
+    for (const [index, delaySeconds] of [5, 10, 30, 30].entries()) {
+      const attempt = index + 1;
+      const claims = await queue.boss.fetch(EMAIL_QUEUE, {
+        batchSize: 100,
+        maxPriority: 5,
+        minPriority: 5,
+      });
+      expect(claims.map((job) => job.id)).toContain(id);
+      await api.get(StartJobAttemptUseCase).execute(id, attempt);
+      await api.get(FailJobAttemptUseCase).execute(id, attempt, 'delivery_failed', false);
+      const before = Date.now();
+      await queue.boss.fail(EMAIL_QUEUE, { id, retryCount: index });
+      const after = Date.now();
+      const [queued] = await queue.boss.findJobs(EMAIL_QUEUE, { id });
+      expect(queued?.state).toBe('retry');
+      const startAfter = Number(queued?.startAfter.getTime());
+      expect(startAfter).toBeGreaterThanOrEqual(before + delaySeconds * 1000 - 2000);
+      expect(startAfter).toBeLessThanOrEqual(after + delaySeconds * 1000 + 2000);
+      // The public status follows the delay: scheduled while waiting, pending once it passes.
+      const waiting = jobSchema.parse(await (await fetch(`${baseUrl}/api/jobs/${id}`)).json());
+      expect(waiting.data.status).toBe('scheduled');
+      await queue.boss.update(EMAIL_QUEUE, undefined, { id, startAfter: new Date() });
+    }
+  }, 20_000);
+
+  it('records a failed attempt and schedules the retry after 5 seconds', async () => {
     const failing = await Test.createTestingModule({ imports: [WorkerModule] })
       .overrideProvider(EMAIL_CLIENT)
       .useValue({ send: () => Promise.resolve(err(new EmailDeliveryFailedError())) })
@@ -494,7 +535,7 @@ describe('email jobs API and worker', () => {
       ]);
       const [queued] = await queue.boss.findJobs(EMAIL_QUEUE, { id: created.data.id });
       expect(queued?.state).toBe('retry');
-      expect(queued?.startAfter.getTime()).toBeGreaterThan(Date.now() + 40_000);
+      expect(queued?.startAfter.getTime()).toBeLessThan(Date.now() + 8000);
       for (const [index, state] of ['retry', 'retry', 'failed'].entries()) {
         const attempt = index + 2;
         const expedited = await queue.boss.update(EMAIL_QUEUE, undefined, {

@@ -314,14 +314,22 @@ export class DrizzleJobRepository implements JobRepository {
 
   async writeJobTransition(id: string, transition: JobTransition): Promise<void> {
     await this.database.transaction(async (tx) => {
-      await tx
+      const [updated] = await tx
         .update(jobs)
         .set({
           ...(transition.result === undefined ? {} : { result: transition.result }),
           status: transition.status,
           updatedAt: new Date(),
         })
-        .where(eq(jobs.id, id));
+        .where(eq(jobs.id, id))
+        .returning({ queue: jobs.queue });
+      if (transition.retryDelaySeconds !== undefined && updated) {
+        // pg-boss `update` refuses active jobs, and the attempt is active when it starts, so the
+        // column is written directly (like the row locks above). pg-boss reads it on failure.
+        await tx.execute(
+          sql`UPDATE pgboss.job SET retry_delay = ${transition.retryDelaySeconds} WHERE name = ${updated.queue} AND id = ${id}::uuid`,
+        );
+      }
       for (const log of transition.logs) {
         await tx
           .insert(jobActivity)

@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
+import { retryDelaySeconds } from '@/common/queue/retry-policy.js';
+
 import { JOB_REPOSITORY } from './ports/job.repository.js';
 
 import type { Job, JobResult } from './job.js';
@@ -83,7 +85,13 @@ export class JobService {
       );
     }
     logs.push({ attempt, event: 'started', eventKey: `started:${attempt}` });
-    await this.repository.writeJobTransition(id, { logs, status: 'processing' });
+    // pg-boss delays the next attempt by the row's `retry_delay` when this one fails, however it
+    // fails, so the delay for this attempt is stored as the attempt starts.
+    await this.repository.writeJobTransition(id, {
+      logs,
+      retryDelaySeconds: retryDelaySeconds(attempt),
+      status: 'processing',
+    });
   }
 
   /**
