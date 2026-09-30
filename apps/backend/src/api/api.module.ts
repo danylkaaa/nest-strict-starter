@@ -13,7 +13,6 @@ import { AircraftTransitReportsApiModule } from './endpoints/aircraft-transit-re
 import { AircraftApiModule } from './endpoints/aircraft/aircraft.module.js';
 import { AirportsApiModule } from './endpoints/airports/airports.module.js';
 import { EmailsApiModule } from './endpoints/emails/emails.module.js';
-import { GreetingApiModule } from './endpoints/greeting/greeting.module.js';
 import { HealthApiModule } from './endpoints/health/health.module.js';
 import { JobsApiModule } from './endpoints/jobs/jobs.module.js';
 
@@ -35,7 +34,6 @@ import { JobsApiModule } from './endpoints/jobs/jobs.module.js';
     EnvelopeModule,
     ValidationModule,
     // endpoints
-    GreetingApiModule,
     EmailsApiModule,
     AirportsApiModule,
     AircraftApiModule,
