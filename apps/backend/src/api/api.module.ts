@@ -6,10 +6,12 @@ import { RequestContextModule } from '@/api/core/context/request-context.module.
 import { AppLoggerModule } from '@/api/core/logger/logger.module.js';
 import { ValidationModule } from '@/api/core/validation/validation.module.js';
 import { DatabaseModule } from '@/common/database/database.module';
+import { QueueModule } from '@/common/queue/queue.module.js';
 
 import { EnvelopeModule } from './core/response-envelope/envelope.module.js';
 import { EmailsApiModule } from './endpoints/emails/emails.module.js';
 import { GreetingApiModule } from './endpoints/greeting/greeting.module.js';
+import { JobsApiModule } from './endpoints/jobs/jobs.module.js';
 
 @Module({
   imports: [
@@ -19,6 +21,11 @@ import { GreetingApiModule } from './endpoints/greeting/greeting.module.js';
       inject: [ApiConfig],
       useFactory: (config: ApiConfig) => config.postgres,
     }),
+    QueueModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ApiConfig],
+      useFactory: (config: ApiConfig) => config.postgres.url,
+    }),
     RequestContextModule,
     AppLoggerModule,
     EnvelopeModule,
@@ -26,6 +33,7 @@ import { GreetingApiModule } from './endpoints/greeting/greeting.module.js';
     // endpoints
     GreetingApiModule,
     EmailsApiModule,
+    JobsApiModule,
   ],
 })
 export class AppModule {}

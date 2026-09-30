@@ -1,15 +1,32 @@
-import { randomInt, randomUUID } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 
 import { Injectable } from '@nestjs/common';
+import { err, ok } from 'neverthrow';
+
+import { EmailDeliveryFailedError } from './email.errors.js';
 
 import type { EmailContent } from './email.js';
 import type { EmailClient } from './ports/email-client.js';
+import type { Result } from 'neverthrow';
 
 @Injectable()
 export class MockEmailClient implements EmailClient {
-  async send(_content: EmailContent): Promise<{ messageId: string }> {
+  async send(
+    _content: EmailContent,
+    deliveryKey?: string,
+  ): Promise<Result<{ messageId: string }, EmailDeliveryFailedError>> {
     await setTimeout(randomInt(1000, 3001));
-    return { messageId: `mock_${randomUUID()}` };
+
+    if (randomInt(0, 10) === 0) {
+      return err(new EmailDeliveryFailedError());
+    }
+
+    return ok({
+      messageId:
+        deliveryKey === undefined
+          ? `mock_${randomUUID()}`
+          : `mock_${createHash('sha256').update(deliveryKey).digest('hex')}`,
+    });
   }
 }

@@ -1,0 +1,39 @@
+{
+  "decision": "submitted",
+  "stage": "interview",
+  "result": {
+    "stage": "interview",
+    "title": "Queued email delivery with pg-boss",
+    "goalSlug": "pg-boss-email-jobs",
+    "answers": [
+      {
+        "questionId": "api_route",
+        "selectedOptionIds": [],
+        "customAnswer": "POST /api/jobs/email",
+        "answer": "POST /api/jobs/email",
+        "completed": true
+      },
+      {
+        "questionId": "retry_policy",
+        "selectedOptionIds": ["three_backoff"],
+        "customAnswer": "",
+        "answer": "3 retries, 60-second exponential backoff; invalid payloads fail immediately",
+        "completed": true
+      },
+      {
+        "questionId": "activity_log",
+        "selectedOptionIds": ["lifecycle_api"],
+        "customAnswer": "",
+        "answer": "All lifecycle events, plus status and activity API",
+        "completed": true
+      },
+      {
+        "questionId": "duplicate_delivery",
+        "selectedOptionIds": ["idempotent"],
+        "customAnswer": "",
+        "answer": "Require deduplication before shipping",
+        "completed": true
+      }
+    ]
+  }
+}

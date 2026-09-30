@@ -43,3 +43,7 @@ export function ApiEnvelopeResponse(type: Type<unknown>, status = 200) {
     }),
   );
 }
+
+export function ApiErrorEnvelopeResponse(status: number, description: string) {
+  return ApiResponse({ description, schema: errorSchema, status });
+}

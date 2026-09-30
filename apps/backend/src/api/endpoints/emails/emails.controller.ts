@@ -1,7 +1,11 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { BadGatewayException, Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 
-import { ApiEnvelopeResponse } from '@/api/core/swagger/api-envelope-response.js';
+import { toHttpException } from '@/api/core/errors/to-http-exception.js';
+import {
+  ApiEnvelopeResponse,
+  ApiErrorEnvelopeResponse,
+} from '@/api/core/swagger/api-envelope-response.js';
 import { ListSentEmailsUseCase } from '@/modules/emails/use-case/list-sent-emails.use-case.js';
 import { SendEmailUseCase } from '@/modules/emails/use-case/send-email.use-case.js';
 
@@ -10,7 +14,14 @@ import { SendEmailDto } from './dtos/send-email.dto.js';
 import { SentEmailDto } from './dtos/sent-email.dto.js';
 import { SentEmailsPageDto } from './dtos/sent-emails-page.dto.js';
 
+import type { HttpExceptionClass } from '@/api/core/errors/to-http-exception.js';
+import type { EmailDeliveryFailedError } from '@/modules/emails/email.errors.js';
+import type { HttpException } from '@nestjs/common';
 import type { Result } from 'neverthrow';
+
+const HTTP_EXCEPTION_FOR = {
+  EmailDeliveryFailedError: BadGatewayException,
+} satisfies Record<EmailDeliveryFailedError['name'], HttpExceptionClass>;
 
 @ApiTags('emails')
 @Controller('emails')
@@ -22,16 +33,18 @@ export class EmailsController {
 
   @Post()
   @ApiOperation({
-    description: 'Waits 1–3 seconds for mock delivery before persisting the email.',
+    description:
+      'Waits 1–3 seconds for mock delivery before persisting the email. About 10% of mock deliveries fail with 502 and persist nothing.',
     summary: 'Simulate sending an email and persist the sent record',
   })
   @ApiBody({ type: SendEmailDto })
   @ApiEnvelopeResponse(SentEmailDto.Output, 201)
-  async send(@Body() body: SendEmailDto): Promise<Result<SentEmailDto, never>> {
+  @ApiErrorEnvelopeResponse(502, 'The email could not be delivered; nothing was stored.')
+  async send(@Body() body: SendEmailDto): Promise<Result<SentEmailDto, HttpException>> {
     const result = await this.sendEmail.execute(body);
-    return result.map((email) =>
-      SentEmailDto.create({ ...email, sentAt: email.sentAt.toISOString() }),
-    );
+    return result
+      .map((email) => SentEmailDto.create({ ...email, sentAt: email.sentAt.toISOString() }))
+      .mapErr((error) => toHttpException(error, HTTP_EXCEPTION_FOR));
   }
 
   @Get()

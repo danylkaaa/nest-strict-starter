@@ -29,15 +29,7 @@
       "persistent": true,
       "cache": false,
       "dependsOn": ["^build"],
-      "env": [
-        "DATABASE_TIMEOUT_MS",
-        "DATABASE_URL",
-        "JWT_SECRET",
-        "JWT_EXPIRES_IN",
-        "PORT",
-        "LOG_LEVEL",
-        "NODE_ENV"
-      ]
+      "env": ["DATABASE_TIMEOUT_MS", "DATABASE_URL", "PORT", "LOG_LEVEL", "NODE_ENV"]
     },
     "db:generate": {
       "cache": false

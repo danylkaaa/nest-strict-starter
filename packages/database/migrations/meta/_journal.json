@@ -22,6 +22,13 @@
       "when": 1790778641386,
       "tag": "0002_gray_justice",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790795390028,
+      "tag": "0003_bouncy_namor",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,8 @@ import type {
 export const EMAIL_REPOSITORY = Symbol('EmailRepository');
 
 export interface EmailRepository {
-  save(email: EmailContent & { messageId: string; sentAt: Date }): Promise<SentEmail>;
+  save(
+    email: EmailContent & { messageId: string; sentAt: Date; deliveryKey?: string },
+  ): Promise<SentEmail>;
   list(input: ListSentEmailsInput): Promise<SentEmailsPage>;
 }
