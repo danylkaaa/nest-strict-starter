@@ -4,7 +4,7 @@ import { ZodError } from 'zod';
 
 import { failure } from './envelope.js';
 
-import type { ErrorEnvelope } from './envelope.js';
+import type { ErrorDetails, ErrorEnvelope } from './envelope.js';
 
 const BAD_REQUEST = 400;
 const INTERNAL_SERVER_ERROR = 500;
@@ -17,6 +17,16 @@ function codeOf(exception: HttpException): string | undefined {
   if (typeof response !== 'object') return undefined;
   const code = (response as { code?: unknown }).code;
   return typeof code === 'string' ? code : undefined;
+}
+
+/** Structured facts a `{ code, message, details }` object response carries, if any. */
+function detailsOf(exception: HttpException): ErrorDetails | undefined {
+  const response = exception.getResponse();
+  if (typeof response !== 'object') return undefined;
+  const details = (response as { details?: unknown }).details;
+  return typeof details === 'object' && details !== null && !Array.isArray(details)
+    ? Object.fromEntries(Object.entries(details))
+    : undefined;
 }
 
 function messageOf(exception: HttpException): { message: string; isList: boolean } {
@@ -51,7 +61,7 @@ export function toErrorEnvelope(exception: unknown): { status: number; body: Err
       (isList && status === BAD_REQUEST
         ? 'VALIDATION_FAILED'
         : (HttpStatus[status] ?? 'HTTP_ERROR'));
-    return { body: failure(code, message), status };
+    return { body: failure(code, message, detailsOf(exception)), status };
   }
 
   // Anything else is a bug: never leak its details.

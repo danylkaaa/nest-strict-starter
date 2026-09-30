@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 
 import { WEBHOOK_QUEUE } from '@/common/queue/queue.service.js';
-import { MAX_ATTEMPTS } from '@/common/queue/retry-policy.js';
 import { CompleteJobUseCase } from '@/modules/jobs/use-case/complete-job.use-case.js';
 import { FailJobAttemptUseCase } from '@/modules/jobs/use-case/fail-job-attempt.use-case.js';
 import { StartJobAttemptUseCase } from '@/modules/jobs/use-case/start-job-attempt.use-case.js';
@@ -54,8 +53,7 @@ export class WebhookJobHandler {
   }
 
   private async failAttemptFor(id: string, attempt: number, category: string): Promise<JobResult> {
-    const terminal = attempt >= MAX_ATTEMPTS;
-    await this.failAttempt.execute(id, attempt, category, terminal);
+    const { terminal } = await this.failAttempt.execute(id, attempt, category, false);
     this.logger.warn(jobLog(WEBHOOK_QUEUE, id, attempt, terminal ? 'failed' : 'retry_scheduled'));
     return { id, status: terminal ? 'deadletter' : 'failed' };
   }

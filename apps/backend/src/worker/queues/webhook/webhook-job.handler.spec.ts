@@ -31,7 +31,12 @@ const job = (retryCount: number, jobData: unknown = data): Job<unknown> => ({
 });
 
 const setup = async (execute: CallWebhookUseCase['execute']) => {
-  const fail = vi.fn().mockResolvedValue(undefined);
+  // The use case owns the terminal decision; here the job allows 4 attempts.
+  const fail = vi
+    .fn<FailJobAttemptUseCase['execute']>()
+    .mockImplementation((_id, attempt, _category, deadLetter) =>
+      Promise.resolve({ terminal: deadLetter || attempt >= 4 }),
+    );
   const complete = vi.fn().mockResolvedValue(undefined);
   const start = vi.fn().mockResolvedValue(undefined);
   const logger = { info: vi.fn(), setContext: vi.fn(), warn: vi.fn() };
@@ -59,6 +64,7 @@ describe('webhook job handler', () => {
     expect(execute).toHaveBeenCalledWith({
       deliveryKey: 'webhook-job:job-1',
       jobId: 'job-1',
+      method: 'POST',
       ...data,
     });
     expect(complete).toHaveBeenCalledWith('job-1', 1, { webhookCallId: 'whc_1' });
@@ -99,7 +105,7 @@ describe('webhook job handler', () => {
       Promise.resolve(err(new WebhookDeliveryFailedError())),
     );
     await expect(handler.handle(job(3))).resolves.toEqual({ id: 'job-1', status: 'deadletter' });
-    expect(fail).toHaveBeenCalledWith('job-1', 4, 'delivery_failed', true);
+    expect(fail).toHaveBeenCalledWith('job-1', 4, 'delivery_failed', false);
   });
 
   it('treats a thrown error as a retryable delivery_or_storage failure', async () => {

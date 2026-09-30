@@ -15,6 +15,17 @@ export class JobService {
     return this.repository.cancelJob(row.queue, id);
   }
 
+  /**
+   * Grants a failed job one more attempt. The status is reconciled with the queue first, because a
+   * job that failed while no read or recovery pass ran is still stored as processing.
+   */
+  async retry(id: string): Promise<'retried' | 'not_found' | 'not_retryable'> {
+    const job = await this.get(id);
+    if (!job) return 'not_found';
+    if (job.status !== 'failed') return 'not_retryable';
+    return this.repository.retryJob(job.queue, id);
+  }
+
   async get(id: string): Promise<Job | null> {
     const row = await this.repository.getJob(id);
     if (!row) return null;
@@ -31,9 +42,18 @@ export class JobService {
         'worker_interrupted',
       );
       if (queued.state === 'failed')
-        await this.repository.addJobLog(id, 'failed', 'failed', attempt, 'worker_interrupted');
+        await this.repository.addJobLog(
+          id,
+          'failed',
+          `failed:${attempt}`,
+          attempt,
+          'worker_interrupted',
+        );
     }
-    return { ...row, activity: await this.repository.getJobActivity(id), status };
+    // Re-read so the figures derived from activity (attempts, completion time) include the events
+    // and status written above.
+    const current = (await this.repository.getJob(id)) ?? row;
+    return { ...current, activity: await this.repository.getJobActivity(id), status };
   }
 
   async reconcileProcessing(): Promise<void> {
@@ -66,12 +86,20 @@ export class JobService {
     await this.repository.writeJobTransition(id, { logs, status: 'processing' });
   }
 
+  /**
+   * Records a failed attempt and returns whether it was the last one. The job's own `maxAttempts`
+   * decides: the worker's pg-boss job carries no retry limit, and a retry raises the row and the
+   * queue limit together, so the row always agrees with pg-boss. `deadLetter` forces a terminal
+   * failure for input errors that never succeed on retry.
+   */
   async recordFailure(
     id: string,
     attempt: number,
     category: string,
-    terminal: boolean,
-  ): Promise<void> {
+    deadLetter: boolean,
+  ): Promise<{ terminal: boolean }> {
+    const row = await this.repository.getJob(id);
+    const terminal = deadLetter || (row !== null && attempt >= row.maxAttempts);
     const logs: JobTransition['logs'] = [
       {
         attempt,
@@ -81,11 +109,18 @@ export class JobService {
       },
     ];
     if (terminal)
-      logs.push({ attempt, errorCategory: category, event: 'failed', eventKey: 'failed' });
+      // Keyed by attempt: a retried job can fail terminally again, and that is a new event.
+      logs.push({
+        attempt,
+        errorCategory: category,
+        event: 'failed',
+        eventKey: `failed:${attempt}`,
+      });
     await this.repository.writeJobTransition(id, {
       logs,
       status: terminal ? 'failed' : 'scheduled',
     });
+    return { terminal };
   }
 
   async recordCompletion(id: string, attempt: number, result: JobResult): Promise<void> {

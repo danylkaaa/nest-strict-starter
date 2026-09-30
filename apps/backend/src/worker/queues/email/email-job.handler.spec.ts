@@ -27,7 +27,12 @@ const job = (retryCount: number): Job<unknown> => ({
 });
 
 const setup = async (execute: SendEmailUseCase['execute']) => {
-  const fail = vi.fn().mockResolvedValue(undefined);
+  // The use case owns the terminal decision; here the job allows 4 attempts.
+  const fail = vi
+    .fn<FailJobAttemptUseCase['execute']>()
+    .mockImplementation((_id, attempt, _category, deadLetter) =>
+      Promise.resolve({ terminal: deadLetter || attempt >= 4 }),
+    );
   const complete = vi.fn().mockResolvedValue(undefined);
   const logger = { info: vi.fn(), setContext: vi.fn(), warn: vi.fn() };
   const module = await Test.createTestingModule({
@@ -71,7 +76,7 @@ describe('email job handler', () => {
       Promise.resolve(err(new EmailDeliveryFailedError())),
     );
     await expect(handler.handle(job(3))).resolves.toEqual({ id: 'job-1', status: 'deadletter' });
-    expect(fail).toHaveBeenCalledWith('job-1', 4, 'delivery_failed', true);
+    expect(fail).toHaveBeenCalledWith('job-1', 4, 'delivery_failed', false);
   });
 
   it('keeps treating thrown storage defects as failed attempts', async () => {

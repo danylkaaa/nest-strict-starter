@@ -50,7 +50,12 @@ const job = (retryCount: number, jobData: unknown = data): Job<unknown> => ({
 });
 
 const setup = async (execute: GenerateAircraftTransitReportUseCase['execute']) => {
-  const fail = vi.fn().mockResolvedValue(undefined);
+  // The use case owns the terminal decision; here the job allows 4 attempts.
+  const fail = vi
+    .fn<FailJobAttemptUseCase['execute']>()
+    .mockImplementation((_id, attempt, _category, deadLetter) =>
+      Promise.resolve({ terminal: deadLetter || attempt >= 4 }),
+    );
   const complete = vi.fn().mockResolvedValue(undefined);
   const start = vi.fn().mockResolvedValue(undefined);
   const logger = { info: vi.fn(), setContext: vi.fn(), warn: vi.fn() };
@@ -124,6 +129,6 @@ describe('aircraft report job handler', () => {
   it('dead-letters a thrown error on the final attempt', async () => {
     const { fail, handler } = await setup(() => Promise.reject(new Error('db down')));
     await expect(handler.handle(job(3))).resolves.toEqual({ id: 'job-1', status: 'deadletter' });
-    expect(fail).toHaveBeenCalledWith('job-1', 4, 'generation_or_storage', true);
+    expect(fail).toHaveBeenCalledWith('job-1', 4, 'generation_or_storage', false);
   });
 });

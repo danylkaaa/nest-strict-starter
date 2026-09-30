@@ -13,12 +13,13 @@ import type { Result } from 'neverthrow';
 @Injectable()
 export class MockEmailClient implements EmailClient {
   async send(
-    _content: EmailContent,
+    content: EmailContent,
     deliveryKey?: string,
   ): Promise<Result<{ messageId: string }, EmailDeliveryFailedError>> {
     await setTimeout(randomInt(1000, 3001));
 
-    if (randomInt(0, 10) === 0) {
+    // Demo hook: a @bounce.test recipient always fails so retries can be shown on demand.
+    if (content.recipient.toLowerCase().endsWith('@bounce.test') || randomInt(0, 10) === 0) {
       return err(new EmailDeliveryFailedError());
     }
 

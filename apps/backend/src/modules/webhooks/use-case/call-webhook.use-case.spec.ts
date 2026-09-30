@@ -11,9 +11,10 @@ import type { WebhookRepository } from '@/modules/webhooks/ports/webhook.reposit
 const input = {
   deliveryKey: 'webhook-job:1',
   jobId: '11111111-1111-4111-8111-111111111111',
+  method: 'PUT',
   payload: { hello: 'world' },
   url: 'https://example.com/hook',
-};
+} as const;
 const receipt = {
   body: { accepted: true, value: 7 },
   requestId: 'mock_1',

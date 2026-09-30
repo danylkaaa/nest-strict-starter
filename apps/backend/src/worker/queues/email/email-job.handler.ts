@@ -3,7 +3,6 @@ import { PinoLogger } from 'nestjs-pino';
 import { z } from 'zod';
 
 import { EMAIL_QUEUE } from '@/common/queue/queue.service.js';
-import { MAX_ATTEMPTS } from '@/common/queue/retry-policy.js';
 import { EmailContentSchema } from '@/modules/emails/email.js';
 import { SendEmailUseCase } from '@/modules/emails/use-case/send-email.use-case.js';
 import { CompleteJobUseCase } from '@/modules/jobs/use-case/complete-job.use-case.js';
@@ -55,8 +54,7 @@ export class EmailJobHandler {
   }
 
   private async failAttemptFor(id: string, attempt: number, category: string): Promise<JobResult> {
-    const terminal = attempt >= MAX_ATTEMPTS;
-    await this.failAttempt.execute(id, attempt, category, terminal);
+    const { terminal } = await this.failAttempt.execute(id, attempt, category, false);
     this.logger.warn(jobLog(EMAIL_QUEUE, id, attempt, terminal ? 'failed' : 'retry_scheduled'));
     return { id, status: terminal ? 'deadletter' : 'failed' };
   }

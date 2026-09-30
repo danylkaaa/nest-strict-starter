@@ -8,7 +8,7 @@ export class JobNotFoundError extends DomainError {
 }
 export class JobConflictError extends DomainError {
   override readonly name = 'JobConflictError';
-  constructor() {
+  constructor(readonly existingJobId: string) {
     super('The idempotency key was already used.');
   }
 }
@@ -16,6 +16,12 @@ export class JobNotCancellableError extends DomainError {
   override readonly name = 'JobNotCancellableError';
   constructor() {
     super('This job cannot be cancelled.');
+  }
+}
+export class JobNotRetryableError extends DomainError {
+  override readonly name = 'JobNotRetryableError';
+  constructor() {
+    super('Only a failed job can be retried.');
   }
 }
 export class JobScheduleError extends DomainError {
@@ -28,4 +34,5 @@ export type JobError =
   | JobNotFoundError
   | JobConflictError
   | JobNotCancellableError
+  | JobNotRetryableError
   | JobScheduleError;

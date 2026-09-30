@@ -44,6 +44,19 @@ curl -X POST http://localhost:3000/api/jobs/aircraft-report \
 
 `GET /api/jobs/:id` returns the status, activity, and a `result` of `{ webhookCallId }` or `{ reportId }` once the job completes; `DELETE /api/jobs/:id` cancels a pending or scheduled job. A repeated `idempotencyKey` returns HTTP 409 on every route, and an invalid transit request (unknown airport or aircraft, same airport, past departure) returns HTTP 400. Retried jobs are safe: a webhook is delivered with a per-job key and one report is stored per job. Reset a development database with `docker compose down -v && pnpm run setup`, then `pnpm db:seed`.
 
+## Manage jobs
+
+| Endpoint                                | Purpose                                                                                                                                                                                                                                                                                               |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/jobs`                         | Paged list, newest first. Query: `queue`, `status` (comma-separated), `search` (job ID or payload text, case-insensitive), `page` (default 1), `pageSize` (1-100, default 10). Returns `{ items, page, pageSize, total, totalPages }`; a scheduled job whose start has passed is listed as `pending`. |
+| `GET /api/jobs/stats`                   | `{ counts, healthy }`: a count for each of the six statuses, and whether the database and queue answer.                                                                                                                                                                                               |
+| `GET /api/jobs/:id`                     | One job with its `payload`, `maxAttempts`, `attempts`, `lastErrorCategory`, `completedAt`, and ordered `activity`.                                                                                                                                                                                    |
+| `POST /api/jobs/:id/retry`              | Grants a failed job one more attempt (HTTP 404 unknown, 409 if not failed).                                                                                                                                                                                                                           |
+| `DELETE /api/jobs/:id`                  | Cancels a pending or scheduled job.                                                                                                                                                                                                                                                                   |
+| `GET /api/aircraft-transit-reports/:id` | The generated report (`reportId` in an aircraft report job's `result`) with its waypoints.                                                                                                                                                                                                            |
+
+Every submission accepts an optional `maxAttempts` (1-10, default 4); a webhook `payload` accepts an optional `method` (`POST` or `PUT`, default `POST`, stored but not sent by the mock). A repeated `idempotencyKey` returns HTTP 409 with `error.details.existingJobId`. To demo retries, use a webhook URL ending in `/503` or an email recipient ending in `@bounce.test`: the mock clients always fail those.
+
 ## API Doc
 
 Open [Swagger UI](http://localhost:3000/api/docs) to confirm the API is running.

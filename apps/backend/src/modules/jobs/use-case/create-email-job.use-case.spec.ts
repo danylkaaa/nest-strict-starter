@@ -1,13 +1,13 @@
 import { err } from 'neverthrow';
 import { describe, expect, it } from 'vitest';
 
-import { JobConflictError } from '@/modules/jobs/job.errors.js';
 import { fakeJobRepository } from '@/modules/jobs/testing/fake-job.repository.js';
 
 import { CreateEmailJobUseCase } from './create-email-job.use-case.js';
 
 const input = {
   idempotencyKey: '11111111-1111-4111-8111-111111111111',
+  maxAttempts: 4,
   payload: { body: 'Hello', recipient: 'person@example.com', subject: 'Welcome' },
   priority: 3,
   type: 'instant',
@@ -24,11 +24,22 @@ describe('create email job use case', () => {
     expect(repository.create).toHaveBeenCalledWith('email', { ...input, startAt: undefined });
   });
 
-  it('reports a used key as a conflict', async () => {
+  it('passes the chosen maxAttempts to the repository', async () => {
     const repository = fakeJobRepository();
-    repository.hasSubmission.mockResolvedValue(true);
+    await new CreateEmailJobUseCase(repository).execute({ ...input, maxAttempts: 2 });
+    expect(repository.create).toHaveBeenCalledWith(
+      'email',
+      expect.objectContaining({ maxAttempts: 2 }),
+    );
+  });
+
+  it('reports a used key as a conflict carrying the existing job ID', async () => {
+    const repository = fakeJobRepository();
+    repository.findSubmission.mockResolvedValue('job-0');
     const result = await new CreateEmailJobUseCase(repository).execute(input);
-    expect(result).toEqual(err(expect.any(JobConflictError)));
+    expect(result).toEqual(
+      err(expect.objectContaining({ existingJobId: 'job-0', name: 'JobConflictError' })),
+    );
     expect(repository.create).not.toHaveBeenCalled();
   });
 });

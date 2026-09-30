@@ -38,6 +38,25 @@ describe('mock email client', () => {
     ).not.toContain(content.recipient);
   });
 
+  it('always fails a @bounce.test recipient without exposing it, whatever the roll', async () => {
+    stubFailureRoll(1);
+    const result = await new MockEmailClient().send({
+      ...content,
+      recipient: 'Person@Bounce.Test',
+    });
+    expect(result).toEqual(err(new EmailDeliveryFailedError()));
+    expect(JSON.stringify(result)).not.toContain('ounce');
+  });
+
+  it('does not fail other recipients that merely mention bounce.test', async () => {
+    stubFailureRoll(1);
+    const result = await new MockEmailClient().send({
+      ...content,
+      recipient: 'bounce.test@example.com',
+    });
+    expect(result.isOk()).toBe(true);
+  });
+
   it('returns a message id otherwise', async () => {
     stubFailureRoll(1);
     const result = await new MockEmailClient().send(content);

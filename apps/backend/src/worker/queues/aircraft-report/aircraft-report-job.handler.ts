@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 
 import { AIRCRAFT_REPORT_QUEUE } from '@/common/queue/queue.service.js';
-import { MAX_ATTEMPTS } from '@/common/queue/retry-policy.js';
 import { TransitJobPayloadSchema } from '@/modules/aircraft-transits/aircraft-transit.js';
 import { GenerateAircraftTransitReportUseCase } from '@/modules/aircraft-transits/use-case/generate-aircraft-transit-report.use-case.js';
 import { CompleteJobUseCase } from '@/modules/jobs/use-case/complete-job.use-case.js';
@@ -73,8 +72,7 @@ export class AircraftReportJobHandler {
   }
 
   private async failAttemptFor(id: string, attempt: number, category: string): Promise<JobResult> {
-    const terminal = attempt >= MAX_ATTEMPTS;
-    await this.failAttempt.execute(id, attempt, category, terminal);
+    const { terminal } = await this.failAttempt.execute(id, attempt, category, false);
     this.logger.warn(
       jobLog(AIRCRAFT_REPORT_QUEUE, id, attempt, terminal ? 'failed' : 'retry_scheduled'),
     );

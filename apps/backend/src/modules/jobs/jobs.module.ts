@@ -11,8 +11,11 @@ import { CreateAircraftReportJobUseCase } from './use-case/create-aircraft-repor
 import { CreateEmailJobUseCase } from './use-case/create-email-job.use-case.js';
 import { CreateWebhookJobUseCase } from './use-case/create-webhook-job.use-case.js';
 import { FailJobAttemptUseCase } from './use-case/fail-job-attempt.use-case.js';
+import { GetJobStatsUseCase } from './use-case/get-job-stats.use-case.js';
 import { GetJobUseCase } from './use-case/get-job.use-case.js';
+import { ListJobsUseCase } from './use-case/list-jobs.use-case.js';
 import { ReconcileJobsUseCase } from './use-case/reconcile-jobs.use-case.js';
+import { RetryJobUseCase } from './use-case/retry-job.use-case.js';
 import { StartJobAttemptUseCase } from './use-case/start-job-attempt.use-case.js';
 
 @Module({
@@ -21,7 +24,10 @@ import { StartJobAttemptUseCase } from './use-case/start-job-attempt.use-case.js
     CreateWebhookJobUseCase,
     CreateAircraftReportJobUseCase,
     GetJobUseCase,
+    ListJobsUseCase,
+    GetJobStatsUseCase,
     CancelJobUseCase,
+    RetryJobUseCase,
     StartJobAttemptUseCase,
     FailJobAttemptUseCase,
     CompleteJobUseCase,
@@ -34,7 +40,10 @@ import { StartJobAttemptUseCase } from './use-case/start-job-attempt.use-case.js
     CreateWebhookJobUseCase,
     CreateAircraftReportJobUseCase,
     GetJobUseCase,
+    ListJobsUseCase,
+    GetJobStatsUseCase,
     CancelJobUseCase,
+    RetryJobUseCase,
     StartJobAttemptUseCase,
     FailJobAttemptUseCase,
     CompleteJobUseCase,

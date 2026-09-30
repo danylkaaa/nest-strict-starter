@@ -25,6 +25,34 @@ describe('createWebhookJobSchema', () => {
     },
   );
 
+  it('defaults the method to POST and accepts PUT', () => {
+    expect(CreateWebhookJobSchema.parse({ ...envelope, payload }).payload.method).toBe('POST');
+    expect(
+      CreateWebhookJobSchema.parse({ ...envelope, payload: { ...payload, method: 'PUT' } }).payload
+        .method,
+    ).toBe('PUT');
+    expect(
+      CreateWebhookJobSchema.safeParse({ ...envelope, payload: { ...payload, method: 'GET' } })
+        .success,
+    ).toBe(false);
+  });
+
+  it('defaults maxAttempts to 4 and accepts 1 through 10', () => {
+    expect(CreateWebhookJobSchema.parse({ ...envelope, payload }).maxAttempts).toBe(4);
+    expect(CreateWebhookJobSchema.parse({ ...envelope, maxAttempts: 1, payload }).maxAttempts).toBe(
+      1,
+    );
+    expect(
+      CreateWebhookJobSchema.parse({ ...envelope, maxAttempts: 10, payload }).maxAttempts,
+    ).toBe(10);
+  });
+
+  it.each([0, 11, 2.5, '3'])('rejects maxAttempts %s', (maxAttempts) => {
+    expect(CreateWebhookJobSchema.safeParse({ ...envelope, maxAttempts, payload }).success).toBe(
+      false,
+    );
+  });
+
   it('keeps the shared envelope rules', () => {
     expect(
       CreateWebhookJobSchema.safeParse({ ...envelope, payload, type: 'schedule' }).success,

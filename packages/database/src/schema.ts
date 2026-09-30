@@ -41,6 +41,8 @@ export const jobs = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     id: uuid('id').primaryKey(),
     idempotencyKey: uuid('idempotency_key').notNull().unique(),
+    maxAttempts: integer('max_attempts').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     priority: integer('priority').notNull(),
     queue: text('queue', { enum: JOB_QUEUES }).notNull(),
     result: jsonb('result').$type<JobResultValue>(),
@@ -53,6 +55,7 @@ export const jobs = pgTable(
   },
   (table) => [
     check('jobs_priority_range', sql`${table.priority} BETWEEN 1 AND 5`),
+    check('jobs_max_attempts_positive', sql`${table.maxAttempts} >= 1`),
     check(
       'jobs_status_valid',
       sql`${table.status} IN ('scheduled', 'pending', 'processing', 'cancelled', 'completed', 'failed')`,
@@ -60,6 +63,7 @@ export const jobs = pgTable(
     check('jobs_queue_valid', sql`${table.queue} IN ('email', 'webhook', 'aircraft-report')`),
     check('jobs_type_valid', sql`${table.type} IN ('instant', 'schedule')`),
     index('jobs_status_start_at_idx').on(table.status, table.startAt),
+    index('jobs_created_at_id_idx').on(table.createdAt.desc(), table.id.desc()),
   ],
 );
 
@@ -69,7 +73,7 @@ export const jobActivity = pgTable(
     attempt: integer('attempt'),
     errorCategory: text('error_category'),
     event: text('event', {
-      enum: ['created', 'started', 'attempt_failed', 'cancelled', 'completed', 'failed'],
+      enum: ['created', 'started', 'attempt_failed', 'cancelled', 'completed', 'failed', 'retried'],
     }).notNull(),
     eventKey: text('event_key').notNull(),
     id: text('id')
@@ -84,7 +88,7 @@ export const jobActivity = pgTable(
     check('job_activity_id_format', sql`${table.id} ~ '^jac_[0-7][0-9A-HJKMNP-TV-Z]{25}$'`),
     check(
       'job_activity_event_valid',
-      sql`${table.event} IN ('created', 'started', 'attempt_failed', 'cancelled', 'completed', 'failed')`,
+      sql`${table.event} IN ('created', 'started', 'attempt_failed', 'cancelled', 'completed', 'failed', 'retried')`,
     ),
     check('job_activity_attempt_positive', sql`${table.attempt} IS NULL OR ${table.attempt} > 0`),
     uniqueIndex('job_activity_job_id_event_key_idx').on(table.jobId, table.eventKey),

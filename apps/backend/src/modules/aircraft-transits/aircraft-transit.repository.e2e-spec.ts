@@ -17,6 +17,8 @@ const createJob = async (): Promise<string> => {
   await database.insert(jobs).values({
     id,
     idempotencyKey: randomUUID(),
+    maxAttempts: 4,
+    payload: {},
     priority: 1,
     queue: 'aircraft-report',
     startAt: new Date(),

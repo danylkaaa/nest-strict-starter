@@ -19,6 +19,7 @@ import { CreateAircraftReportJobUseCase } from './create-aircraft-report-job.use
 const departureAt = new Date('2031-01-01T10:00:00.000Z');
 const input = {
   idempotencyKey: '11111111-1111-4111-8111-111111111111',
+  maxAttempts: 4,
   payload: {
     aircraftId: AIRCRAFT.id,
     departureAt,
@@ -54,7 +55,7 @@ describe('create aircraft report job use case', () => {
 
   it('reports a used key as a conflict without validating the request', async () => {
     const { repository, transits, useCase } = setup();
-    repository.hasSubmission.mockResolvedValue(true);
+    repository.findSubmission.mockResolvedValue('job-0');
     const result = await useCase.execute({
       ...input,
       payload: { ...input.payload, originIcao: 'ZZZZ' },

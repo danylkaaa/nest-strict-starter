@@ -9,6 +9,7 @@ import { DatabaseModule } from '@/common/database/database.module';
 import { QueueModule } from '@/common/queue/queue.module.js';
 
 import { EnvelopeModule } from './core/response-envelope/envelope.module.js';
+import { AircraftTransitReportsApiModule } from './endpoints/aircraft-transit-reports/aircraft-transit-reports.module.js';
 import { AircraftApiModule } from './endpoints/aircraft/aircraft.module.js';
 import { AirportsApiModule } from './endpoints/airports/airports.module.js';
 import { EmailsApiModule } from './endpoints/emails/emails.module.js';
@@ -37,6 +38,7 @@ import { JobsApiModule } from './endpoints/jobs/jobs.module.js';
     EmailsApiModule,
     AirportsApiModule,
     AircraftApiModule,
+    AircraftTransitReportsApiModule,
     JobsApiModule,
   ],
 })

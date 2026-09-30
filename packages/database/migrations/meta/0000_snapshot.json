@@ -1,5 +1,5 @@
 {
-  "id": "f3f1fac2-737a-4954-9c1c-2e88dc09486a",
+  "id": "ffba375e-32b5-46a5-83d9-699c0e933f0f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -377,7 +377,7 @@
         },
         "job_activity_event_valid": {
           "name": "job_activity_event_valid",
-          "value": "\"job_activity\".\"event\" IN ('created', 'started', 'attempt_failed', 'cancelled', 'completed', 'failed')"
+          "value": "\"job_activity\".\"event\" IN ('created', 'started', 'attempt_failed', 'cancelled', 'completed', 'failed', 'retried')"
         },
         "job_activity_attempt_positive": {
           "name": "job_activity_attempt_positive",
@@ -406,6 +406,18 @@
         "idempotency_key": {
           "name": "idempotency_key",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_attempts": {
+          "name": "max_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
@@ -474,6 +486,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "jobs_created_at_id_idx": {
+          "name": "jobs_created_at_id_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -490,6 +523,10 @@
         "jobs_priority_range": {
           "name": "jobs_priority_range",
           "value": "\"jobs\".\"priority\" BETWEEN 1 AND 5"
+        },
+        "jobs_max_attempts_positive": {
+          "name": "jobs_max_attempts_positive",
+          "value": "\"jobs\".\"max_attempts\" >= 1"
         },
         "jobs_status_valid": {
           "name": "jobs_status_valid",

@@ -17,9 +17,10 @@ vi.mock('node:crypto', async (importOriginal) => ({
 const input = {
   deliveryKey: 'webhook-job:1',
   jobId: '11111111-1111-4111-8111-111111111111',
+  method: 'POST',
   payload: { secret: 'payload-value' },
   url: 'https://example.com/hook',
-};
+} as const;
 
 const stubFailureRoll = (roll: number) => {
   randomIntMock.mockImplementation((min, max) => (min === 0 && max === 10 ? roll : min));
@@ -37,6 +38,25 @@ describe('mock webhook client', () => {
     expect(result).toEqual(err(new WebhookDeliveryFailedError()));
     expect(JSON.stringify(result)).not.toContain('example.com');
     expect(JSON.stringify(result)).not.toContain('payload-value');
+  });
+
+  it('always fails a URL ending in /503 without exposing it, whatever the roll', async () => {
+    stubFailureRoll(1);
+    const result = await new MockWebhookClient().call({
+      ...input,
+      url: 'https://example.com/private/503',
+    });
+    expect(result).toEqual(err(new WebhookDeliveryFailedError()));
+    expect(JSON.stringify(result)).not.toContain('private');
+  });
+
+  it('does not treat /503 elsewhere in the URL as a demo failure', async () => {
+    stubFailureRoll(1);
+    const result = await new MockWebhookClient().call({
+      ...input,
+      url: 'https://example.com/503/hook',
+    });
+    expect(result.isOk()).toBe(true);
   });
 
   it('returns the same receipt for the same delivery key', async () => {

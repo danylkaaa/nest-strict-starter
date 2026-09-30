@@ -7,7 +7,11 @@ import type { ApiResponseSchemaHost } from '@nestjs/swagger';
 const errorSchema: ApiResponseSchemaHost['schema'] = {
   properties: {
     error: {
-      properties: { code: { type: 'string' }, message: { type: 'string' } },
+      properties: {
+        code: { type: 'string' },
+        details: { additionalProperties: true, type: 'object' },
+        message: { type: 'string' },
+      },
       required: ['code', 'message'],
       type: 'object',
     },

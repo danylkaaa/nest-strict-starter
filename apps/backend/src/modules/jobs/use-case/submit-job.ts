@@ -15,7 +15,8 @@ export async function checkSubmission(
   repository: JobRepository,
   input: Pick<CreateJobInput, 'idempotencyKey' | 'startAt' | 'type'>,
 ): Promise<Result<void, JobConflictError | JobScheduleError>> {
-  if (await repository.hasSubmission(input.idempotencyKey)) return err(new JobConflictError());
+  const existingJobId = await repository.findSubmission(input.idempotencyKey);
+  if (existingJobId !== null) return err(new JobConflictError(existingJobId));
   if (input.type === 'schedule' && (!input.startAt || input.startAt.getTime() <= Date.now()))
     return err(new JobScheduleError());
   return ok();
@@ -31,6 +32,6 @@ export async function enqueueJob(
     startAt: input.type === 'schedule' ? input.startAt : undefined,
   });
   return result.duplicate
-    ? err(new JobConflictError())
+    ? err(new JobConflictError(result.id))
     : ok({ id: result.id, startAt: result.startAt });
 }

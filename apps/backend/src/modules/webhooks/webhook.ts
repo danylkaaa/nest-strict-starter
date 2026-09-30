@@ -8,13 +8,18 @@ export type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue };
 
+export type WebhookMethod = 'POST' | 'PUT';
+
 export interface WebhookContent {
   readonly url: string;
   readonly payload: JsonValue;
+  /** Stored and shown with the job; the mock client does not send it. */
+  readonly method: WebhookMethod;
 }
 
 /** Shared by the HTTP DTO and the queue handler; only http(s) URLs are accepted. */
 export const WebhookContentSchema = z.object({
+  method: z.enum(['POST', 'PUT']).default('POST'),
   payload: z.json(),
   url: z.url({ protocol: /^https?$/u }).max(2048),
 });
