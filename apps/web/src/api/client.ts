@@ -6,6 +6,7 @@ import { request } from './http';
 import {
   QUEUE_BY_JOB_TYPE,
   toAirport,
+  toBatchLogs,
   toTransitReport,
   toUiBatch,
   toUiJob,
@@ -14,6 +15,7 @@ import {
 import {
   apiAircraftListSchema,
   apiAirportsSchema,
+  apiBatchActivitySchema,
   apiBatchPageSchema,
   apiBatchSchema,
   apiCancelledJobSchema,
@@ -29,6 +31,7 @@ import type { ApiBatchSummary, ApiJob } from './schemas';
 import type {
   Airport,
   Job,
+  JobLog,
   JobStatus,
   ListEmailsQuery,
   ListJobsQuery,
@@ -448,6 +451,9 @@ export const api = {
   },
   // GET /api/job-batches/:id
   getBatch: loadBatch,
+  // GET /api/job-batches/:id/activity
+  getBatchActivity: async (id: string): Promise<JobLog[]> =>
+    toBatchLogs((await request(apiBatchActivitySchema, `/job-batches/${id}/activity`)).items),
   // GET /api/health
   getHealth,
   // GET /api/jobs/:id (+ GET /api/aircraft-transit-reports/:id for a finished transit job)

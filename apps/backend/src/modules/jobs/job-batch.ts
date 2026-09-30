@@ -1,4 +1,5 @@
-import type { JobStatus, JobSummary } from './job.js';
+import type { JobActivity, JobStatus, JobSummary } from './job.js';
+import type { QueueName } from '@/common/queue/queue.service.js';
 import type { TransitRequest } from '@/modules/aircraft-transits/aircraft-transit.js';
 import type { EmailContent } from '@/modules/emails/email.js';
 import type { WebhookContent } from '@/modules/webhooks/webhook.js';
@@ -149,3 +150,69 @@ export const toJobBatch = (
   ),
   items: [...children],
 });
+
+/** One activity event of a child, tagged with the child it belongs to. */
+export interface JobBatchActivityRow {
+  id: string;
+  jobId: string;
+  queue: QueueName;
+  /** 1-based position of the child in the submitted order. */
+  position: number;
+  event: JobActivity['event'];
+  attempt: number | null;
+  errorCategory: string | null;
+  recordedAt: Date;
+}
+
+/** A child event, or a batch-level entry (`jobId`, `queue`, and `position` are then null). */
+export interface JobBatchActivityEntry {
+  id: string;
+  event: JobActivity['event'] | 'batch_created' | 'cancellation_requested';
+  jobId: string | null;
+  queue: QueueName | null;
+  position: number | null;
+  attempt: number | null;
+  errorCategory: string | null;
+  recordedAt: Date;
+}
+
+const batchEntry = (
+  batch: JobBatchRecord,
+  event: 'batch_created' | 'cancellation_requested',
+  recordedAt: Date,
+): JobBatchActivityEntry => ({
+  attempt: null,
+  errorCategory: null,
+  event,
+  id: `${event}:${batch.id}`,
+  jobId: null,
+  position: null,
+  queue: null,
+  recordedAt,
+});
+
+/** At equal times: batch created, cancellation requested, then child events. */
+const entryRank = (entry: JobBatchActivityEntry): number =>
+  entry.event === 'batch_created' ? 0 : entry.event === 'cancellation_requested' ? 1 : 2;
+
+const compareEntries = (a: JobBatchActivityEntry, b: JobBatchActivityEntry): number =>
+  a.recordedAt.getTime() - b.recordedAt.getTime() ||
+  entryRank(a) - entryRank(b) ||
+  (a.position ?? 0) - (b.position ?? 0) ||
+  (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/**
+ * One feed, oldest first, with a stable tie-break (time, kind, position, event ID): the synthetic
+ * batch-created entry, every child event, and the cancellation request when one was recorded.
+ */
+export const buildBatchActivity = (
+  batch: JobBatchRecord,
+  rows: readonly JobBatchActivityRow[],
+): JobBatchActivityEntry[] =>
+  [
+    batchEntry(batch, 'batch_created', batch.createdAt),
+    ...rows,
+    ...(batch.cancellationRequestedAt === null
+      ? []
+      : [batchEntry(batch, 'cancellation_requested', batch.cancellationRequestedAt)]),
+  ].toSorted(compareEntries);

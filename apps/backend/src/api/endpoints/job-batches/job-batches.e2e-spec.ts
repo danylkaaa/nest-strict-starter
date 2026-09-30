@@ -46,6 +46,19 @@ const batchSchema = z.object({
     total: z.number(),
   }),
 });
+const activitySchema = z.object({
+  data: z.object({
+    items: z.array(
+      z.object({
+        event: z.string(),
+        jobId: z.uuid().nullable(),
+        position: z.number().nullable(),
+        queue: z.string().nullable(),
+        recordedAt: z.iso.datetime(),
+      }),
+    ),
+  }),
+});
 const errorSchema = z.object({
   error: z.object({ code: z.string(), details: z.record(z.string(), z.unknown()).optional() }),
 });
@@ -285,6 +298,37 @@ describe('job batches', () => {
       const [queued] = await queue.boss.findJobs(row.queue, { id: row.id });
       expect(queued?.state).toBe('cancelled');
     }
+  });
+
+  it('serves one time-ordered activity feed with tasks tagged by position', async () => {
+    const id = await createBatch({ ...scheduled(), items: [emailItem, webhookItem, reportItem()] });
+    await request(`/job-batches/${id}`, 'DELETE');
+    const response = await request(`/job-batches/${id}/activity`, 'GET');
+    expect(response.status).toBe(200);
+    const { items } = activitySchema.parse(await response.json()).data;
+    const times = items.map((entry) => Date.parse(entry.recordedAt));
+    expect(times).toEqual(times.toSorted((a, b) => a - b));
+    expect(items[0]).toMatchObject({ event: 'batch_created', jobId: null, position: null });
+    const requested = items.filter((entry) => entry.event === 'cancellation_requested');
+    expect(requested).toHaveLength(1);
+    expect(requested[0]).toMatchObject({ jobId: null, position: null, queue: null });
+    const children = await childRows(id);
+    const tasks = items.filter((entry) => entry.position !== null);
+    expect(tasks.map((entry) => [entry.position, entry.queue, entry.event])).toEqual(
+      expect.arrayContaining([
+        [1, 'email', 'created'],
+        [2, 'webhook', 'created'],
+        [3, 'aircraft-report', 'created'],
+        [1, 'email', 'cancelled'],
+        [2, 'webhook', 'cancelled'],
+        [3, 'aircraft-report', 'cancelled'],
+      ]),
+    );
+    expect(tasks).toHaveLength(6);
+    expect(new Set(tasks.map((entry) => entry.jobId))).toEqual(
+      new Set(children.map((child) => child.id)),
+    );
+    expect((await request(`/job-batches/${randomUUID()}/activity`, 'GET')).status).toBe(404);
   });
 
   it('keeps a claimed child active and denies it another attempt', async () => {

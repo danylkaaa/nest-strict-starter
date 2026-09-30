@@ -2,6 +2,7 @@ import { COARSE_STATUS } from '@/features/jobs/job-rules';
 
 import type {
   ApiActivity,
+  ApiBatchActivityEntry,
   ApiBatchChild,
   ApiBatchSummary,
   ApiJob,
@@ -91,24 +92,50 @@ export const toTransitReport = (report: ApiTransitReport): TransitReport => {
   };
 };
 
-const toLog = (event: ApiActivity): JobLog => {
-  const { recordedAt: at } = event;
+const describeEvent = (
+  event: Pick<ApiActivity, 'attempt' | 'errorCategory' | 'event'>,
+): Pick<JobLog, 'level' | 'message'> => {
   const attempt = event.attempt ?? 1;
   const category = describeError(event.errorCategory ?? '');
-  if (event.event === 'created') return { at, level: 'info', message: 'Job created' };
-  if (event.event === 'started')
-    return { at, level: 'info', message: `Attempt ${attempt} started` };
+  if (event.event === 'created') return { level: 'info', message: 'Job created' };
+  if (event.event === 'started') return { level: 'info', message: `Attempt ${attempt} started` };
   if (event.event === 'attempt_failed')
-    return { at, level: 'warning', message: `Attempt ${attempt} failed: ${category}` };
-  if (event.event === 'retried') return { at, level: 'info', message: 'Retry requested' };
-  if (event.event === 'cancelled') return { at, level: 'info', message: 'Job cancelled' };
+    return { level: 'warning', message: `Attempt ${attempt} failed: ${category}` };
+  if (event.event === 'retried') return { level: 'info', message: 'Retry requested' };
+  if (event.event === 'cancelled') return { level: 'info', message: 'Job cancelled' };
   if (event.event === 'completed')
-    return { at, level: 'info', message: `Completed on attempt ${attempt}` };
-  return { at, level: 'error', message: `Gave up after attempt ${attempt}: ${category}` };
+    return { level: 'info', message: `Completed on attempt ${attempt}` };
+  return { level: 'error', message: `Gave up after attempt ${attempt}: ${category}` };
 };
+
+const toLog = (event: ApiActivity): JobLog => ({
+  at: event.recordedAt,
+  ...describeEvent(event),
+});
 
 const toLogs = (activity: readonly ApiActivity[]): JobLog[] =>
   activity.map((event) => toLog(event));
+
+const JOB_TYPE_BY_QUEUE: Record<Queue, Exclude<JobType, 'batch'>> = {
+  'aircraft-report': 'transit',
+  'email': 'email',
+  'webhook': 'webhook',
+};
+
+const toBatchLog = (entry: ApiBatchActivityEntry): JobLog => {
+  const { attempt, errorCategory, event, position, queue, recordedAt: at } = entry;
+  if (event === 'batch_created') return { at, level: 'info', message: 'Batch created' };
+  if (event === 'cancellation_requested')
+    return { at, level: 'info', message: 'Cancellation requested' };
+  const { level, message } = describeEvent({ attempt, errorCategory, event });
+  const task =
+    position === null || queue === null ? 'Task' : `Task ${position} · ${JOB_TYPE_BY_QUEUE[queue]}`;
+  return { at, level, message: `${task}: ${message}` };
+};
+
+/** The batch feed is already time-ordered by the API; one log line per entry. */
+export const toBatchLogs = (entries: readonly ApiBatchActivityEntry[]): JobLog[] =>
+  entries.map((entry) => toBatchLog(entry));
 
 export const toAttempts = (activity: readonly ApiActivity[]): JobAttempt[] => {
   const attempts = new Map<number, JobAttempt>();

@@ -1,9 +1,9 @@
-import { Box, Button, Link, Table, Text } from '@chakra-ui/react';
-import { Link as RouterLink } from 'react-router';
+import { Box, Button, Table, Text } from '@chakra-ui/react';
 
 import { canCancel, canRetry, displayStatus, jobPath, TYPE_LABEL } from '@/features/jobs/job-rules';
 import { useJobActions } from '@/features/jobs/use-job-actions';
 import { formatTime } from '@/shared/format';
+import { ShortId } from '@/shared/ui/short-id';
 
 import { StatusBadge } from './status-badge';
 
@@ -46,9 +46,7 @@ export const JobsTable = ({ full = false, jobs }: JobsTableProps) => {
         {jobs.map((job) => (
           <Table.Row _hover={{ bg: 'blue.50' }} key={job.id}>
             <Table.Cell ps="5">
-              <Link asChild color="blue.600" fontFamily="mono" fontSize="xs">
-                <RouterLink to={jobPath(job)}>{job.id}</RouterLink>
-              </Link>
+              <ShortId id={job.id} to={jobPath(job)} />
             </Table.Cell>
             <Table.Cell>{TYPE_LABEL[job.type]}</Table.Cell>
             <Table.Cell>

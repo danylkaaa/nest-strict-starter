@@ -12,6 +12,7 @@ import { retryPolicy } from '@/common/queue/retry-policy.js';
 
 import type {
   ChildProgress,
+  JobBatchActivityRow,
   JobBatchChild,
   JobBatchRecord,
   ListJobBatchesInput,
@@ -223,6 +224,34 @@ export class DrizzleJobRepository implements JobRepository {
           batch,
           children: rows.map(({ position, ...job }) => ({ job, position })),
         };
+      },
+      { accessMode: 'read only', isolationLevel: 'repeatable read' },
+    );
+  }
+
+  async getJobBatchActivity(
+    id: string,
+  ): Promise<{ batch: JobBatchRecord; rows: JobBatchActivityRow[] } | null> {
+    return this.database.transaction(
+      async (tx) => {
+        const [batch] = await tx.select(batchColumns).from(jobBatches).where(eq(jobBatches.id, id));
+        if (!batch) return null;
+        const rows = await tx
+          .select({
+            attempt: jobActivity.attempt,
+            errorCategory: jobActivity.errorCategory,
+            event: jobActivity.event,
+            id: jobActivity.id,
+            jobId: jobActivity.jobId,
+            position: sql<number>`${jobs.batchPosition} + 1`,
+            queue: jobs.queue,
+            recordedAt: jobActivity.recordedAt,
+          })
+          .from(jobActivity)
+          .innerJoin(jobs, eq(jobs.id, jobActivity.jobId))
+          .where(eq(jobs.batchId, id))
+          .orderBy(asc(jobActivity.recordedAt), asc(jobActivity.id));
+        return { batch, rows };
       },
       { accessMode: 'read only', isolationLevel: 'repeatable read' },
     );

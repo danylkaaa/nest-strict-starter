@@ -24,11 +24,13 @@ import {
 } from '@/modules/jobs/job.errors.js';
 import { CancelJobBatchUseCase } from '@/modules/jobs/use-case/cancel-job-batch.use-case.js';
 import { CreateJobBatchUseCase } from '@/modules/jobs/use-case/create-job-batch.use-case.js';
+import { GetJobBatchActivityUseCase } from '@/modules/jobs/use-case/get-job-batch-activity.use-case.js';
 import { GetJobBatchUseCase } from '@/modules/jobs/use-case/get-job-batch.use-case.js';
 import { ListJobBatchesUseCase } from '@/modules/jobs/use-case/list-job-batches.use-case.js';
 
 import { CreateJobBatchDto } from './dtos/create-job-batch.dto.js';
 import { CreatedJobBatchDto } from './dtos/created-job-batch.dto.js';
+import { JobBatchActivityDto, toJobBatchActivityResponse } from './dtos/job-batch-activity.dto.js';
 import { JobBatchIdDto } from './dtos/job-batch-id.dto.js';
 import { JobBatchDto } from './dtos/job-batch.dto.js';
 import { toJobBatchChildrenResponse, toJobBatchSummaryResponse } from './dtos/job-batch.schema.js';
@@ -45,6 +47,7 @@ export class JobBatchesController {
     private readonly getBatch: GetJobBatchUseCase,
     private readonly listBatches: ListJobBatchesUseCase,
     private readonly cancelBatch: CancelJobBatchUseCase,
+    private readonly getActivity: GetJobBatchActivityUseCase,
   ) {}
 
   @Post()
@@ -128,6 +131,22 @@ export class JobBatchesController {
     const result = await this.getBatch.execute(params.id);
     if (result.isErr()) throw new NotFoundException(this.notFound(result.error));
     return this.toDto(result.value);
+  }
+
+  @Get(':id/activity')
+  @ApiOperation({
+    description:
+      'One feed, oldest first (time, then kind, task position, event ID): a batch-created entry, every task event tagged with job ID, queue, and 1-based position, and a cancellation-requested entry when one was made. Unpaged: at most 100 tasks.',
+    summary: 'Get the activity of a batch',
+  })
+  @ApiEnvelopeResponse(JobBatchActivityDto.Output)
+  @ApiErrorEnvelopeResponse(404, 'The batch ID does not exist.')
+  async activity(@Param() params: JobBatchIdDto): Promise<JobBatchActivityDto> {
+    const result = await this.getActivity.execute(params.id);
+    if (result.isErr()) throw new NotFoundException(this.notFound(result.error));
+    return JobBatchActivityDto.create({
+      items: result.value.map((entry) => toJobBatchActivityResponse(entry)),
+    });
   }
 
   @Delete(':id')

@@ -39,3 +39,8 @@ export const formatMinutes = (totalMinutes: number): string => {
 };
 
 export const formatNumber = (value: number): string => Math.round(value).toLocaleString('en-US');
+
+const SHORT_ID_LENGTH = 8;
+
+/** First block of a UUID, enough to tell IDs apart on screen; the full value is copied on click */
+export const shortId = (id: string): string => id.slice(0, SHORT_ID_LENGTH);

@@ -5,7 +5,6 @@ import {
   Flex,
   HStack,
   Input,
-  Link,
   NativeSelect,
   Table,
   Text,
@@ -18,6 +17,7 @@ import { Breadcrumbs } from '@/shared/ui/breadcrumbs';
 import { PageHeader } from '@/shared/ui/page-header';
 import { Pager } from '@/shared/ui/pager';
 import { Panel } from '@/shared/ui/panel';
+import { ShortId } from '@/shared/ui/short-id';
 
 import { useEmailsStore } from './emails-store';
 import { EMAILS_PAGE_SIZE, useSentEmails } from './queries';
@@ -135,17 +135,7 @@ export const EmailsPage = () => {
                       </Badge>
                     </Table.Cell>
                     <Table.Cell>
-                      <Link
-                        asChild
-                        color="blue.600"
-                        fontFamily="mono"
-                        fontSize="xs"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                        }}
-                      >
-                        <RouterLink to={`/jobs/${email.jobId}`}>{email.jobId}</RouterLink>
-                      </Link>
+                      <ShortId id={email.jobId} to={`/jobs/${email.jobId}`} />
                     </Table.Cell>
                     <Table.Cell>
                       {email.tries}/{email.maxAttempts}

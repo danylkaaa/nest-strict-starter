@@ -9,9 +9,39 @@ import {
   displayStatus,
   jobPath,
   STATUS_LABEL,
+  toRerunInput,
 } from './job-rules';
 
 const CHILD_OF = '33333333-3333-4333-8333-333333333333';
+
+describe('toRerunInput', () => {
+  const KEY = '44444444-4444-4444-8444-444444444444';
+
+  it('copies the body and limits of a finished job under a fresh key, run now', () => {
+    const job = emailJob('completed');
+    const input = toRerunInput(job, KEY);
+
+    expect(input).toEqual({
+      idempotencyKey: KEY,
+      maxAttempts: job.maxAttempts,
+      payload: job.payload,
+      priority: job.priority,
+      type: 'email',
+    });
+    expect(input.runAt).toBeUndefined();
+  });
+
+  it('runs a batch child as a standalone job', () => {
+    expect(toRerunInput(emailJob('failed', CHILD_OF), KEY)).toMatchObject({ type: 'email' });
+  });
+
+  it('copies the tasks of a batch', () => {
+    expect(toRerunInput(batchJob('completed'), KEY)).toMatchObject({
+      payload: { items: [] },
+      type: 'batch',
+    });
+  });
+});
 
 describe('job rules', () => {
   it('allows cancelling jobs that have not started', () => {

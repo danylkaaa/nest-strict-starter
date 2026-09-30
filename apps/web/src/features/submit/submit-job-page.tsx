@@ -6,6 +6,7 @@ import { JOB_TYPES } from '@/features/jobs/job';
 import { jobPath } from '@/features/jobs/job-rules';
 import { useAirports, useSubmitJob } from '@/features/jobs/queries';
 import { ApiError } from '@/shared/api-error';
+import { shortId } from '@/shared/format';
 import { Breadcrumbs } from '@/shared/ui/breadcrumbs';
 import { PageHeader } from '@/shared/ui/page-header';
 import { Panel } from '@/shared/ui/panel';
@@ -80,11 +81,11 @@ export const SubmitJobPage = () => {
       },
       onSuccess: ({ created, job }) => {
         setIdempotencyKey(newIdempotencyKey());
-        if (created) toaster.success({ title: `Created ${job.id}` });
+        if (created) toaster.success({ title: `Created ${shortId(job.id)}` });
         else {
           toaster.info({
             description: 'Duplicate submit detected',
-            title: `Returned existing ${job.id}`,
+            title: `Returned existing ${shortId(job.id)}`,
           });
         }
         void navigate(jobPath(job));

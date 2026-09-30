@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatDate, formatMinutes, formatNumber, formatUtcDateTime } from './format';
+import { formatDate, formatMinutes, formatNumber, formatUtcDateTime, shortId } from './format';
 
 describe('format', () => {
+  it('shortens an ID to its first block', () => {
+    expect(shortId('78628bfa-7baf-45cd-811b-247b022fed45')).toBe('78628bfa');
+  });
+
   it('formats a UTC calendar date', () => {
     expect(formatDate('2026-10-03T09:00:00Z')).toBe('3 Oct 2026');
   });

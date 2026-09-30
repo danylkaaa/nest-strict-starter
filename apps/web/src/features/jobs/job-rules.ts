@@ -1,4 +1,4 @@
-import type { BatchStatus, DisplayStatus, Job, JobStatus, JobType } from './job';
+import type { BatchStatus, DisplayStatus, Job, JobStatus, JobType, SubmitJobInput } from './job';
 
 // Same rules the API enforces; the UI uses them to show or hide actions
 
@@ -17,6 +17,18 @@ export const canCancel = (job: Job): boolean => {
 /** Only a failed standalone job; the API refuses to retry a batch child and has no batch retry */
 export const canRetry = (job: Job): boolean =>
   job.status === 'failed' && job.batchId === null && job.type !== 'batch';
+
+/**
+ * A new job with the same body, priority, and attempt limit, run immediately under a fresh key.
+ * Works for any job in any state, including a batch child (the copy is standalone).
+ */
+export const toRerunInput = (job: Job, idempotencyKey: string): SubmitJobInput => {
+  const shared = { idempotencyKey, maxAttempts: job.maxAttempts, priority: job.priority };
+  if (job.type === 'batch') return { ...shared, payload: job.payload, type: 'batch' };
+  if (job.type === 'email') return { ...shared, payload: job.payload, type: 'email' };
+  if (job.type === 'transit') return { ...shared, payload: job.payload, type: 'transit' };
+  return { ...shared, payload: job.payload, type: 'webhook' };
+};
 
 /** The status a badge shows: a batch shows its own derived status */
 export const displayStatus = (job: Job): DisplayStatus =>

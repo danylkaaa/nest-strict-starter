@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { toAttempts, toTransitReport, toUiBatch, toUiJob } from './mappers';
+import { toAttempts, toBatchLogs, toTransitReport, toUiBatch, toUiJob } from './mappers';
 
-import type { ApiActivity, ApiBatchChild, ApiBatchSummary, ApiJob } from './schemas';
+import type {
+  ApiActivity,
+  ApiBatchActivityEntry,
+  ApiBatchChild,
+  ApiBatchSummary,
+  ApiJob,
+} from './schemas';
 import type { Airport } from '@/features/jobs/job';
 
 let counter = 0;
@@ -318,6 +324,63 @@ describe('toUiBatch', () => {
 
     expect(batch).toMatchObject({
       payload: { items: [{ payload: { destination: 'LHR', origin: 'JFK' }, type: 'transit' }] },
+    });
+  });
+});
+
+const entry = (overrides: Partial<ApiBatchActivityEntry>): ApiBatchActivityEntry => ({
+  attempt: null,
+  errorCategory: null,
+  event: 'created',
+  id: 'jac_1',
+  jobId: 'child-1',
+  position: 1,
+  queue: 'email',
+  recordedAt: '2026-10-01T10:00:00.000Z',
+  ...overrides,
+});
+
+describe('toBatchLogs', () => {
+  it('keeps the feed order and prefixes task events with position and type', () => {
+    const logs = toBatchLogs([
+      entry({ event: 'batch_created', jobId: null, position: null, queue: null }),
+      entry({ position: 3, queue: 'webhook', recordedAt: '2026-10-01T10:00:01.000Z' }),
+      entry({
+        attempt: 2,
+        errorCategory: 'delivery_failed',
+        event: 'attempt_failed',
+        position: 3,
+        queue: 'aircraft-report',
+        recordedAt: '2026-10-01T10:00:02.000Z',
+      }),
+      entry({
+        event: 'cancellation_requested',
+        jobId: null,
+        position: null,
+        queue: null,
+        recordedAt: '2026-10-01T10:00:03.000Z',
+      }),
+    ]);
+
+    expect(logs).toEqual([
+      { at: '2026-10-01T10:00:00.000Z', level: 'info', message: 'Batch created' },
+      { at: '2026-10-01T10:00:01.000Z', level: 'info', message: 'Task 3 · webhook: Job created' },
+      {
+        at: '2026-10-01T10:00:02.000Z',
+        level: 'warning',
+        message: 'Task 3 · transit: Attempt 2 failed: Delivery failed',
+      },
+      { at: '2026-10-01T10:00:03.000Z', level: 'info', message: 'Cancellation requested' },
+    ]);
+  });
+
+  it('gives a terminal failure the error level', () => {
+    const [log] = toBatchLogs([
+      entry({ attempt: 4, errorCategory: 'invalid_payload', event: 'failed' }),
+    ]);
+    expect(log).toMatchObject({
+      level: 'error',
+      message: 'Task 1 · email: Gave up after attempt 4: Invalid payload',
     });
   });
 });

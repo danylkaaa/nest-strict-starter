@@ -5,7 +5,6 @@ import {
   Flex,
   HStack,
   Input,
-  Link,
   NativeSelect,
   Table,
   Text,
@@ -19,6 +18,7 @@ import { KeyValueList } from '@/shared/ui/key-value-list';
 import { PageHeader } from '@/shared/ui/page-header';
 import { Pager } from '@/shared/ui/pager';
 import { Panel } from '@/shared/ui/panel';
+import { ShortId } from '@/shared/ui/short-id';
 
 import { WEBHOOKS_PAGE_SIZE, useSentWebhooks } from './queries';
 import { useWebhooksStore } from './webhooks-store';
@@ -138,17 +138,7 @@ export const WebhooksPage = () => {
                       </Badge>
                     </Table.Cell>
                     <Table.Cell>
-                      <Link
-                        asChild
-                        color="blue.600"
-                        fontFamily="mono"
-                        fontSize="xs"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                        }}
-                      >
-                        <RouterLink to={`/jobs/${webhook.jobId}`}>{webhook.jobId}</RouterLink>
-                      </Link>
+                      <ShortId id={webhook.jobId} to={`/jobs/${webhook.jobId}`} />
                     </Table.Cell>
                     <Table.Cell>
                       {webhook.tries}/{webhook.maxAttempts}

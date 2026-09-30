@@ -1,6 +1,7 @@
 import type { QueueName } from '@/common/queue/queue.service.js';
 import type {
   ChildProgress,
+  JobBatchActivityRow,
   JobBatchChild,
   JobBatchRecord,
   ListJobBatchesInput,
@@ -92,6 +93,13 @@ export interface JobRepository {
   createBatch(input: BatchInsert): Promise<{ id: string; startAt: Date; duplicate: boolean }>;
   /** The batch and its children in position order, read from one database snapshot. */
   getJobBatch(id: string): Promise<{ batch: JobBatchRecord; children: JobBatchChild[] } | null>;
+  /**
+   * The batch row and every activity event of its children (1-100 children, a handful of events
+   * each, so unpaged), from one database snapshot. Order is unspecified; the use case sorts.
+   */
+  getJobBatchActivity(
+    id: string,
+  ): Promise<{ batch: JobBatchRecord; rows: JobBatchActivityRow[] } | null>;
   /** Page of batches (newest first) with their children's progress figures, from one snapshot. */
   listJobBatches(
     input: ListJobBatchesInput,

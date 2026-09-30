@@ -1,10 +1,10 @@
-import { Box, Link, Stack, Text } from '@chakra-ui/react';
-import { Link as RouterLink } from 'react-router';
+import { Box, Stack, Text } from '@chakra-ui/react';
 
 import { TYPE_LABEL } from '@/features/jobs/job-rules';
 import { useAirports } from '@/features/jobs/queries';
 import { taskFormFromSpec } from '@/features/submit/submit-form';
 import { TaskFields } from '@/features/submit/task-fields';
+import { ShortId } from '@/shared/ui/short-id';
 
 import type { Job } from '@/features/jobs/job';
 
@@ -28,11 +28,18 @@ export const PayloadView = ({ job }: { job: Job }) => {
       {job.payload.items.map((task, index) => (
         // Tasks are identified by their position in the batch
         <Box
+          _target={{
+            bg: 'blue.50',
+            borderColor: 'blue.500',
+            boxShadow: '0 0 0 2px var(--chakra-colors-blue-500)',
+          }}
           bg="gray.50"
           borderRadius="md"
           borderWidth="1px"
+          id={`batch-task-${index + 1}`}
           key={`task-${String(index + 1)}`}
           p="4"
+          scrollMarginTop="24"
         >
           <Text fontWeight="semibold" mb="3">
             Task {index + 1} · {TYPE_LABEL[task.type]}
@@ -43,11 +50,9 @@ export const PayloadView = ({ job }: { job: Job }) => {
               </Text>
             )}
             {job.batchChildIds[index] !== undefined && (
-              <Link asChild color="blue.600" fontFamily="mono" fontSize="xs" ms="3">
-                <RouterLink to={`/jobs/${job.batchChildIds[index]}`}>
-                  {job.batchChildIds[index]}
-                </RouterLink>
-              </Link>
+              <Box as="span" ms="3">
+                <ShortId id={job.batchChildIds[index]} to={`/jobs/${job.batchChildIds[index]}`} />
+              </Box>
             )}
           </Text>
           <Stack gap="3">

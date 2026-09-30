@@ -5,7 +5,6 @@ import {
   Flex,
   HStack,
   Input,
-  Link,
   NativeSelect,
   Spinner,
   Table,
@@ -21,6 +20,7 @@ import { Breadcrumbs } from '@/shared/ui/breadcrumbs';
 import { PageHeader } from '@/shared/ui/page-header';
 import { Pager } from '@/shared/ui/pager';
 import { Panel } from '@/shared/ui/panel';
+import { ShortId } from '@/shared/ui/short-id';
 
 import { REPORTS_PAGE_SIZE, useReports } from './queries';
 import { useReportsStore } from './reports-store';
@@ -156,17 +156,7 @@ export const ReportsPage = () => {
                       </Badge>
                     </Table.Cell>
                     <Table.Cell>
-                      <Link
-                        asChild
-                        color="blue.600"
-                        fontFamily="mono"
-                        fontSize="xs"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                        }}
-                      >
-                        <RouterLink to={`/jobs/${report.jobId}`}>{report.jobId}</RouterLink>
-                      </Link>
+                      <ShortId id={report.jobId} to={`/jobs/${report.jobId}`} />
                     </Table.Cell>
                     <Table.Cell>
                       {report.tries}/{report.maxAttempts}

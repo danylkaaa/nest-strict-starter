@@ -15,10 +15,12 @@ import {
 import { jobBatchRecord, jobSummary } from '@/modules/jobs/testing/fixtures.js';
 import { CancelJobBatchUseCase } from '@/modules/jobs/use-case/cancel-job-batch.use-case.js';
 import { CreateJobBatchUseCase } from '@/modules/jobs/use-case/create-job-batch.use-case.js';
+import { GetJobBatchActivityUseCase } from '@/modules/jobs/use-case/get-job-batch-activity.use-case.js';
 import { GetJobBatchUseCase } from '@/modules/jobs/use-case/get-job-batch.use-case.js';
 import { ListJobBatchesUseCase } from '@/modules/jobs/use-case/list-job-batches.use-case.js';
 
 import { CreateJobBatchDto } from './dtos/create-job-batch.dto.js';
+import { JobBatchActivityDto } from './dtos/job-batch-activity.dto.js';
 import { JobBatchDto } from './dtos/job-batch.dto.js';
 import { JobBatchesPageDto } from './dtos/job-batches-page.dto.js';
 import { ListJobBatchesDto } from './dtos/list-job-batches.dto.js';
@@ -66,6 +68,7 @@ const setup = async () => {
   const get = vi.fn<GetJobBatchUseCase['execute']>();
   const list = vi.fn<ListJobBatchesUseCase['execute']>();
   const cancel = vi.fn<CancelJobBatchUseCase['execute']>();
+  const activity = vi.fn<GetJobBatchActivityUseCase['execute']>();
   const module = await Test.createTestingModule({
     controllers: [JobBatchesController],
     providers: [
@@ -73,9 +76,10 @@ const setup = async () => {
       { provide: GetJobBatchUseCase, useValue: { execute: get } },
       { provide: ListJobBatchesUseCase, useValue: { execute: list } },
       { provide: CancelJobBatchUseCase, useValue: { execute: cancel } },
+      { provide: GetJobBatchActivityUseCase, useValue: { execute: activity } },
     ],
   }).compile();
-  return { cancel, controller: module.get(JobBatchesController), create, get, list };
+  return { activity, cancel, controller: module.get(JobBatchesController), create, get, list };
 };
 
 describe('job batches controller create', () => {
@@ -186,6 +190,59 @@ describe('job batches controller reads', () => {
     expect(list).toHaveBeenCalledWith({ page: 1, pageSize: 10 });
     expect(ListJobBatchesDto.schema.safeParse({ pageSize: '101' }).success).toBe(false);
     expect(ListJobBatchesDto.schema.safeParse({ page: '0' }).success).toBe(false);
+  });
+});
+
+describe('job batches controller activity', () => {
+  it('serializes the feed in the order the use case returns it', async () => {
+    const { activity, controller } = await setup();
+    activity.mockResolvedValue(
+      ok([
+        {
+          attempt: null,
+          errorCategory: null,
+          event: 'batch_created',
+          id: 'batch_created:b-1',
+          jobId: null,
+          position: null,
+          queue: null,
+          recordedAt: new Date('2030-01-01T00:00:00Z'),
+        },
+        {
+          attempt: 1,
+          errorCategory: 'delivery_failed',
+          event: 'attempt_failed',
+          id: 'jac_1',
+          jobId: B_ID,
+          position: 2,
+          queue: 'webhook',
+          recordedAt: new Date('2030-01-01T00:00:05Z'),
+        },
+      ]),
+    );
+    const dto = await controller.activity({ id: 'b-1' });
+    expect(activity).toHaveBeenCalledWith('b-1');
+    expect(dto.items).toEqual([
+      expect.objectContaining({
+        event: 'batch_created',
+        jobId: null,
+        recordedAt: '2030-01-01T00:00:00.000Z',
+      }),
+      expect.objectContaining({
+        errorCategory: 'delivery_failed',
+        jobId: B_ID,
+        position: 2,
+        queue: 'webhook',
+        recordedAt: '2030-01-01T00:00:05.000Z',
+      }),
+    ]);
+    expect(JobBatchActivityDto.schema.safeParse(dto).success).toBe(true);
+  });
+
+  it('maps an unknown batch to 404', async () => {
+    const { activity, controller } = await setup();
+    activity.mockResolvedValue(err(new JobBatchNotFoundError()));
+    await expect(controller.activity({ id: 'x' })).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 

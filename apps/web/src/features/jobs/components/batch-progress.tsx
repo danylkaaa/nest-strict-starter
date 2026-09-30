@@ -1,4 +1,4 @@
-import { Box, Flex, Grid, HStack, Progress, Text } from '@chakra-ui/react';
+import { Box, Flex, Grid, HStack, Link, Progress, Text } from '@chakra-ui/react';
 
 import { TYPE_LABEL } from '@/features/jobs/job-rules';
 import { Panel } from '@/shared/ui/panel';
@@ -71,23 +71,28 @@ export const BatchTaskGraph = ({
     <Grid gap="1.5" templateColumns="repeat(auto-fill, minmax(2.5rem, 1fr))">
       {items.map((item, index) => (
         // Items are identified by their position in the batch
-        <Flex
-          align="center"
+        <Link
+          _focusVisible={{ outline: '2px solid', outlineColor: 'blue.500', outlineOffset: '2px' }}
+          _hover={{ opacity: 0.8, textDecoration: 'none' }}
+          alignItems="center"
           animation={item === 'running' ? 'pulse 1.2s ease-in-out infinite' : undefined}
+          aria-label={`Go to Task ${index + 1} definition`}
           bg={CELL_STYLE[item].bg}
           borderColor={CELL_STYLE[item].border}
           borderRadius="md"
           borderWidth={item === 'running' ? '2px' : '1px'}
           color={CELL_STYLE[item].color}
+          display="flex"
           fontSize="xs"
           fontWeight="medium"
           h="9"
-          justify="center"
+          href={`#batch-task-${index + 1}`}
+          justifyContent="center"
           key={`item-${String(index + 1)}`}
           title={`Task ${index + 1} · ${TYPE_LABEL[taskTypes[index] ?? 'email']} · ${item}`}
         >
           {index + 1}
-        </Flex>
+        </Link>
       ))}
     </Grid>
     <HStack color="fg.muted" flexWrap="wrap" fontSize="xs" gap="5" mt="3.5">

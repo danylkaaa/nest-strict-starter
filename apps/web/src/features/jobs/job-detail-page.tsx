@@ -1,12 +1,13 @@
-import { Alert, Button, Center, Grid, Link, Spinner, Stack, Text } from '@chakra-ui/react';
-import { Link as RouterLink, useParams } from 'react-router';
+import { Alert, Box, Button, Center, Grid, Spinner, Stack, Text } from '@chakra-ui/react';
+import { useParams } from 'react-router';
 
 import { ApiError } from '@/shared/api-error';
-import { formatDate, formatTime } from '@/shared/format';
+import { formatDate, formatTime, shortId } from '@/shared/format';
 import { Breadcrumbs } from '@/shared/ui/breadcrumbs';
 import { KeyValueList } from '@/shared/ui/key-value-list';
 import { PageHeader } from '@/shared/ui/page-header';
 import { Panel } from '@/shared/ui/panel';
+import { ShortId } from '@/shared/ui/short-id';
 
 import { AttemptsPanel } from './components/attempts-panel';
 import { BatchProgress, BatchTaskGraph } from './components/batch-progress';
@@ -15,7 +16,7 @@ import { PayloadView } from './components/payload-view';
 import { ResultView } from './components/result-view';
 import { StatusBadge } from './components/status-badge';
 import { canCancel, canRetry, displayStatus, TYPE_LABEL } from './job-rules';
-import { useBatch, useJob } from './queries';
+import { useBatch, useBatchActivity, useJob } from './queries';
 import { TransitReportView } from './transit/transit-report-view';
 import { useJobActions } from './use-job-actions';
 
@@ -31,17 +32,33 @@ const subtitle = (job: Job) =>
       ? `${TYPE_LABEL[job.type]} job · ${job.workerId ?? 'worker'} · started ${orNone(job.startedAt)}`
       : `${TYPE_LABEL[job.type]} job · ${job.attempts} of ${job.maxAttempts} attempts used`;
 
+/** One feed for the whole batch: its own events and every task's activity, oldest first */
+const BatchLogsPanel = ({ id }: { id: string }) => {
+  const { data } = useBatchActivity(id);
+  return (
+    <Panel title="Logs">
+      {data === undefined ? (
+        <Spinner size="sm" />
+      ) : (
+        <Box aria-label="Batch logs" as="section" maxH="96" overflowY="auto" pe="2" tabIndex={0}>
+          <LogList logs={data} />
+        </Box>
+      )}
+    </Panel>
+  );
+};
+
 export const JobDetail = ({ job }: { job: Job }) => {
   const isBatch = job.type === 'batch';
-  const { busy, cancel, retry } = useJobActions();
+  const { busy, cancel, rerun, retry } = useJobActions();
   const report = job.type === 'transit' ? job.result : null;
 
   const crumbs: Crumb[] = [
     { label: 'Home', to: '/' },
     { label: 'Jobs', to: '/jobs' },
     report === null
-      ? { label: job.id, mono: true }
-      : { label: job.id, mono: true, to: `/jobs/${job.id}` },
+      ? { label: shortId(job.id), mono: true }
+      : { label: shortId(job.id), mono: true, to: `/jobs/${job.id}` },
     ...(report === null ? [] : [{ label: 'Transit report' }]),
   ];
 
@@ -63,6 +80,15 @@ export const JobDetail = ({ job }: { job: Job }) => {
                   Cancel
                 </Button>
               )}
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  rerun(job);
+                }}
+                variant="outline"
+              >
+                Run again
+              </Button>
               {canRetry(job) && (
                 <Button
                   colorPalette="blue"
@@ -82,11 +108,11 @@ export const JobDetail = ({ job }: { job: Job }) => {
         subtitle={
           report === null
             ? subtitle(job)
-            : `Aircraft transit report · ${job.id} · ${job.attempts} attempt${job.attempts === 1 ? '' : 's'}`
+            : `Aircraft transit report · ${shortId(job.id)} ·${job.attempts} attempt${job.attempts === 1 ? '' : 's'}`
         }
         title={
           report === null
-            ? job.id
+            ? shortId(job.id)
             : `${report.origin.code} → ${report.destination.code} · ${formatDate(report.departureAt)}`
         }
       />
@@ -121,7 +147,7 @@ export const JobDetail = ({ job }: { job: Job }) => {
           <Panel title="Details">
             <KeyValueList
               items={[
-                { label: 'ID', mono: true, value: job.id },
+                { label: 'ID', value: <ShortId id={job.id} /> },
                 { label: 'Status', value: <StatusBadge status={displayStatus(job)} /> },
                 { label: 'Type', mono: true, value: job.type },
                 { label: 'Priority', mono: true, value: job.priority },
@@ -137,28 +163,31 @@ export const JobDetail = ({ job }: { job: Job }) => {
                   : [
                       {
                         label: 'Batch',
-                        value: (
-                          <Link asChild color="blue.600" fontFamily="mono" fontSize="xs">
-                            <RouterLink to={`/batches/${job.batchId}`}>{job.batchId}</RouterLink>
-                          </Link>
-                        ),
+                        value: <ShortId id={job.batchId} to={`/batches/${job.batchId}`} />,
                       },
                     ]),
                 { label: 'Created', mono: true, value: formatTime(job.createdAt) },
                 { label: 'Started', mono: true, value: orNone(job.startedAt) },
                 { label: 'Completed', mono: true, value: orNone(job.completedAt) },
                 { label: 'Scheduled for', mono: true, value: orNone(job.runAt) },
-                { label: 'Idempotency key', mono: true, value: job.idempotencyKey ?? 'none' },
+                {
+                  label: 'Idempotency key',
+                  mono: job.idempotencyKey === null,
+                  value: job.idempotencyKey === null ? 'none' : <ShortId id={job.idempotencyKey} />,
+                },
               ]}
             />
           </Panel>
           <ResultView job={job} />
         </Stack>
         {job.type === 'batch' ? (
-          <BatchTaskGraph
-            items={job.batchItems}
-            taskTypes={job.payload.items.map((task) => task.type)}
-          />
+          <Stack gap="5">
+            <BatchTaskGraph
+              items={job.batchItems}
+              taskTypes={job.payload.items.map((task) => task.type)}
+            />
+            <BatchLogsPanel id={job.id} />
+          </Stack>
         ) : (
           <Stack gap="5">
             <AttemptsPanel attempts={job.attemptHistory} />

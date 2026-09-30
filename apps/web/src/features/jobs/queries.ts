@@ -33,6 +33,14 @@ export const useBatch = (id: string) =>
     retry: (count, error) => !(error instanceof ApiError) && count < 3,
   });
 
+export const useBatchActivity = (id: string) =>
+  useQuery({
+    queryFn: () => api.getBatchActivity(id),
+    queryKey: ['batch-activity', id],
+    refetchInterval: LIVE_REFRESH_MS,
+    retry: (count, error) => !(error instanceof ApiError) && count < 3,
+  });
+
 export const useHealth = () =>
   useQuery({ queryFn: api.getHealth, queryKey: ['health'], refetchInterval: LIVE_REFRESH_MS });
 
@@ -43,8 +51,8 @@ const useInvalidateJobs = () => {
   const queryClient = useQueryClient();
   return () =>
     Promise.all(
-      ['jobs', 'job', 'batch', 'health', 'emails', 'webhooks', 'reports'].map((key) =>
-        queryClient.invalidateQueries({ queryKey: [key] }),
+      ['jobs', 'job', 'batch', 'batch-activity', 'health', 'emails', 'webhooks', 'reports'].map(
+        (key) => queryClient.invalidateQueries({ queryKey: [key] }),
       ),
     );
 };

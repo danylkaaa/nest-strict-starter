@@ -248,3 +248,29 @@ export const apiBatchPageSchema = z.object({
   total: z.number().int(),
   totalPages: z.number().int(),
 });
+
+/** One feed entry of a batch: a task event tagged with its task, or a batch-level entry. */
+export const apiBatchActivityEntrySchema = z.object({
+  attempt: z.number().int().nullable(),
+  errorCategory: z.string().nullable(),
+  event: z.enum([
+    'batch_created',
+    'cancellation_requested',
+    'created',
+    'started',
+    'attempt_failed',
+    'cancelled',
+    'completed',
+    'failed',
+    'retried',
+  ]),
+  id: z.string(),
+  jobId: z.string().nullable(),
+  /** 1-based task position; null for batch-level entries. */
+  position: z.number().int().nullable(),
+  queue: z.enum(QUEUES).nullable(),
+  recordedAt: timestamp,
+});
+export type ApiBatchActivityEntry = z.infer<typeof apiBatchActivityEntrySchema>;
+
+export const apiBatchActivitySchema = z.object({ items: z.array(apiBatchActivityEntrySchema) });

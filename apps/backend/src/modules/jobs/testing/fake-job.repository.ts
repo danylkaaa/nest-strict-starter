@@ -32,6 +32,7 @@ export const fakeJobRepository = (): {
   getJob: vi.fn<JobRepository['getJob']>().mockResolvedValue(null),
   getJobActivity: vi.fn<JobRepository['getJobActivity']>().mockResolvedValue([]),
   getJobBatch: vi.fn<JobRepository['getJobBatch']>().mockResolvedValue(null),
+  getJobBatchActivity: vi.fn<JobRepository['getJobBatchActivity']>().mockResolvedValue(null),
   getQueueJob: vi.fn<JobRepository['getQueueJob']>().mockResolvedValue(null),
   isHealthy: vi.fn<JobRepository['isHealthy']>().mockResolvedValue(true),
   listJobBatches: vi

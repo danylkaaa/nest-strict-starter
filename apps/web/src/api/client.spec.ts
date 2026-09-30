@@ -401,3 +401,65 @@ describe('a batch after a full page reload', () => {
     expect(after).toHaveProperty('payload.items.1.payload.destination', 'SFO');
   });
 });
+
+describe('batch activity', () => {
+  it('reads the batch feed endpoint and maps it to logs with task positions', async () => {
+    stubApi({
+      'GET /job-batches/batch-1/activity': () => ({
+        data: {
+          items: [
+            {
+              attempt: null,
+              errorCategory: null,
+              event: 'batch_created',
+              id: 'batch_created:batch-1',
+              jobId: null,
+              position: null,
+              queue: null,
+              recordedAt: '2026-10-01T10:00:00.000Z',
+            },
+            {
+              attempt: 1,
+              errorCategory: null,
+              event: 'started',
+              id: 'jac_1',
+              jobId: 'child-2',
+              position: 2,
+              queue: 'webhook',
+              recordedAt: '2026-10-01T10:00:01.000Z',
+            },
+          ],
+        },
+      }),
+    });
+    const api = await loadClient();
+
+    const logs = await api.getBatchActivity('batch-1');
+
+    expect(calls).toEqual([
+      { body: undefined, method: 'GET', path: '/job-batches/batch-1/activity' },
+    ]);
+    expect(logs).toEqual([
+      { at: '2026-10-01T10:00:00.000Z', level: 'info', message: 'Batch created' },
+      {
+        at: '2026-10-01T10:00:01.000Z',
+        level: 'info',
+        message: 'Task 2 · webhook: Attempt 1 started',
+      },
+    ]);
+  });
+
+  it('reports an unknown batch through the API error code', async () => {
+    stubApi({
+      'GET /job-batches/missing/activity': () => ({
+        error: { code: 'JobBatchNotFoundError', message: 'Batch not found.' },
+        status: 404,
+      }),
+    });
+    const api = await loadClient();
+
+    await expect(api.getBatchActivity('missing')).rejects.toMatchObject({
+      code: 'JobBatchNotFoundError',
+    });
+  });
+});
