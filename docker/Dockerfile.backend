@@ -1,0 +1,20 @@
+FROM node:24-bookworm-slim
+
+WORKDIR /app
+
+RUN npm install --global pnpm@10.32.1
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY oxfmt.config.ts oxlint.config.ts ./
+COPY apps/backend/package.json apps/backend/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/database/package.json packages/database/package.json
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+COPY apps/backend apps/backend
+COPY packages/database packages/database
+COPY docker/with-database-url.sh docker/with-database-url.sh
+RUN pnpm --filter @workspace/database build && pnpm --filter backend build
+
+ENTRYPOINT ["sh", "/app/docker/with-database-url.sh"]
+CMD ["pnpm", "--filter", "backend", "start"]

@@ -18,5 +18,62 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      DATABASE_NAME: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - pnpm --filter @workspace/database db:migrate && pnpm --filter backend queue:migrate && pnpm --filter @workspace/database db:seed
+    restart: 'no'
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      DATABASE_NAME: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
+      NODE_ENV: production
+      http__port: 3000
+      logger__level: ${logger__level:-info}
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      DATABASE_NAME: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
+      NODE_ENV: production
+      logger__level: ${logger__level:-info}
+    command: [pnpm, --filter, backend, worker:start]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    ports:
+      - '127.0.0.1:5173:80'
+    depends_on:
+      - api
+    restart: unless-stopped
 volumes:
   postgres-data:

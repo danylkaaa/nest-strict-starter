@@ -4,16 +4,27 @@ NestJS backend and Drizzle database package in a pnpm + Turbo monorepo.
 
 ## Start the project
 
+## Links
+
+- Swagger UI at [http://localhost:3000/api/docs](http://localhost:3000/api/docs)
+- Web UI at [http://localhost:5173]('http://localhost:5173')
+
+### Docker Compose
+
+```bash
+cp .env.example .env
+docker compose up -d
+```
+
+Run `docker compose down` to stop the containers; the database volume remains. The migration and seed service is safe to run again when Compose recreates it. If port 5433 is occupied, set another `POSTGRES_PORT` in `.env` before starting Compose.
+
+### Local development
+
 ```bash
 pnpm install
 pnpm run setup
 pnpm run dev
 ```
-
-## Links
-
-- Swagger UI at [http://localhost:3000/api/docs](http://localhost:3000/api/docs)
-- Web UI at [http://localhost:5173]('http://localhost:5173')
 
 ## Diagrams
 
@@ -57,13 +68,6 @@ pnpm --filter backend test        # backend only
 pnpm --filter web test            # web only
 pnpm --filter backend test:watch  # rerun backend tests while editing
 ```
-
-## API Doc
-
-Open [Swagger UI](http://localhost:3000/api/docs) to confirm the API is running.
-
-After seeding, `GET /api/airports` lists airports sorted by ICAO code and `GET /api/aircraft` lists aircraft sorted by registration.
-The normal `test` scripts run `*.spec.ts` files. `pnpm check` also runs unit tests alongside type checking, linting, formatting, and dependency checks; it does not run E2E tests.
 
 ### E2E and database integration tests
 
