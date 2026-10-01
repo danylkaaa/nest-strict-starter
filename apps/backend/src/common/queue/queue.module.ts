@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 
 import { QueueService } from './queue.service.js';
 
+import type { QueueConnection } from './queue.service.js';
 import type { DynamicModule, InjectionToken } from '@nestjs/common';
 
 @Global()
@@ -10,7 +11,7 @@ export class QueueModule {
   static forRootAsync(options: {
     imports?: DynamicModule['imports'];
     inject: InjectionToken[];
-    useFactory: (...args: never[]) => string;
+    useFactory: (...args: never[]) => QueueConnection;
   }): DynamicModule {
     return {
       exports: [QueueService],

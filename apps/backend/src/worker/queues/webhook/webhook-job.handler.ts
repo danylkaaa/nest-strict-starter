@@ -28,7 +28,10 @@ export class WebhookJobHandler {
   async handle(job: Job<unknown>): Promise<JobResult> {
     const attempt = job.retryCount + 1;
     this.logger.info(jobLog(WEBHOOK_QUEUE, job.id, attempt, 'pickup'));
-    await this.startAttempt.execute(job.id, attempt);
+    if (!(await this.startAttempt.execute(job.id, attempt))) {
+      this.logger.warn(jobLog(WEBHOOK_QUEUE, job.id, attempt, 'failed'));
+      return { id: job.id, status: 'deadletter' };
+    }
     const parsed = WebhookContentSchema.safeParse(job.data);
     if (!parsed.success) {
       await this.failAttempt.execute(job.id, attempt, 'invalid_payload', true);

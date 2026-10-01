@@ -1,7 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { retryDelaySeconds } from '@/common/queue/retry-policy.js';
-
 import { JOB_REPOSITORY } from './ports/job.repository.js';
 
 import type { Job, JobResult } from './job.js';
@@ -73,7 +71,7 @@ export class JobService {
     }
   }
 
-  async recordStart(id: string, attempt: number): Promise<void> {
+  async recordStart(id: string, attempt: number): Promise<boolean> {
     const logs: JobTransition['logs'] = [];
     for (let previous = 1; previous < attempt; previous++) {
       logs.push(
@@ -87,13 +85,12 @@ export class JobService {
       );
     }
     logs.push({ attempt, event: 'started', eventKey: `started:${attempt}` });
-    // pg-boss delays the next attempt by the row's `retry_delay` when this one fails, however it
-    // fails, so the delay for this attempt is stored as the attempt starts.
-    await this.repository.writeJobTransition(id, {
+    const status = await this.repository.writeJobTransition(id, {
       logs,
-      retryDelaySeconds: retryDelaySeconds(attempt),
+      skipIfBatchCancelled: { attempt },
       status: 'processing',
     });
+    return status !== 'failed';
   }
 
   /**
@@ -126,9 +123,9 @@ export class JobService {
         event: 'failed',
         eventKey: `failed:${attempt}`,
       });
-    // A batch child must not be retried once its batch is cancelled. The repository decides that
-    // under the job row lock (the cancellation holds the same lock), so the stored status and
-    // the settle result the handler derives from `terminal` agree with the lowered queue limit.
+    // A batch child must not run more business work once its batch is cancelled. The repository
+    // decides under the child row lock whether this failure is terminal for the application job;
+    // a queue retry after a crash is dead-lettered at its next claim.
     const written = await this.repository.writeJobTransition(id, {
       ...(!terminal && (row?.batchId ?? null) !== null
         ? { failedAttemptInCancelledBatch: { attempt, category } }

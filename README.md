@@ -75,7 +75,7 @@ pnpm --filter backend test:watch  # rerun backend tests while editing
 2. Stop `pnpm dev` or any other worker using this database, then run:
 
 ```bash
-DATABASE_URL="$(sed -n 's/^DATABASE_URL=//p' .env)" pnpm --filter backend test:integration
+set -a && . ./.env && set +a && pnpm --filter backend test:integration
 ```
 
 The integration command runs the backend's `*.e2e-spec.ts` files against the database named in the root `.env`. It runs separately from `pnpm test`; keep other workers stopped so they do not consume jobs created by the suite.

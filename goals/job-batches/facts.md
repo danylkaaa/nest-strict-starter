@@ -16,7 +16,7 @@
 
 ## Cancellation and access
 
-- Cancelling a batch atomically records the request and cancels all scheduled, pending, or retry-waiting children that have not been claimed. A child already processing may complete or fail, but cannot receive another automatic retry after cancellation.
+- Cancelling a batch atomically records the request and cancels all scheduled, pending, or retry-waiting children that have not been claimed. A child already processing may complete or fail. If pg-boss automatically retries it after a crash or expiry, the next claim fails terminally before any business side effect.
 - A second cancellation request returns the current batch without adding events or changing child outcomes. An unknown batch returns 404. A fully completed or failed batch that was never cancelled returns 409.
 - The existing single-job cancel and manual retry endpoints return 409 for a batch child. A child remains readable through `GET /api/jobs/:id`; batch creation and cancellation do not erase its activity or result.
 - The top-level jobs list shows standalone jobs, while the batch list shows parents. Children appear within batch detail and by direct job ID, avoiding duplicate top-level entries. Existing job stats and health counts continue to count execution jobs, including children, and do not count batch parents.

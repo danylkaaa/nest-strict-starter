@@ -29,18 +29,40 @@
       "persistent": true,
       "cache": false,
       "dependsOn": ["^build"],
-      "env": ["DATABASE_TIMEOUT_MS", "DATABASE_URL", "PORT", "LOG_LEVEL", "NODE_ENV"]
+      "env": [
+        "DATABASE_TIMEOUT_MS",
+        "DATABASE_NAME",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "PORT",
+        "LOG_LEVEL",
+        "NODE_ENV"
+      ]
     },
     "db:generate": {
       "cache": false
     },
     "db:migrate": {
       "cache": false,
-      "env": ["DATABASE_URL"]
+      "env": [
+        "DATABASE_NAME",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD"
+      ]
     },
     "db:seed": {
       "cache": false,
-      "env": ["DATABASE_URL"]
+      "env": [
+        "DATABASE_NAME",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD"
+      ]
     }
   }
 }

@@ -8,7 +8,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DrizzleAircraftTransitRepository } from './aircraft-transit.repository.js';
 import { buildTransitPath } from './transit-path.js';
 
-const pool = new Pool({ connectionString: process.env['DATABASE_URL'] });
+const pool = new Pool({
+  database: process.env['DATABASE_NAME'],
+  host:
+    (process.env['POSTGRES_HOST'] === '' ? undefined : process.env['POSTGRES_HOST']) ?? 'localhost',
+  password: process.env['POSTGRES_PASSWORD'],
+  port: Number(process.env['POSTGRES_PORT']),
+  user: process.env['POSTGRES_USER'],
+});
 const database = createDrizzleInstance(pool);
 const repository = new DrizzleAircraftTransitRepository(database);
 

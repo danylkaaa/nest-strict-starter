@@ -8,10 +8,22 @@ import { airportSeed } from './seed-data/airports.js';
 
 config({ path: '../../.env', quiet: true });
 
-const url = process.env['DATABASE_URL'];
-if (!url) throw new Error('DATABASE_URL is required to seed the database.');
+const { DATABASE_NAME, POSTGRES_HOST, POSTGRES_PASSWORD, POSTGRES_PORT, POSTGRES_USER } =
+  process.env;
+const missing = Object.entries({ DATABASE_NAME, POSTGRES_PASSWORD, POSTGRES_PORT, POSTGRES_USER })
+  .filter(([, value]) => !value)
+  .map(([key]) => key);
+if (missing.length > 0) {
+  throw new Error(`${missing.join(', ')} required to seed the database.`);
+}
 
-const pool = new Pool({ connectionString: url });
+const pool = new Pool({
+  database: DATABASE_NAME,
+  host: (POSTGRES_HOST === '' ? undefined : POSTGRES_HOST) ?? 'localhost',
+  password: POSTGRES_PASSWORD,
+  port: Number(POSTGRES_PORT),
+  user: POSTGRES_USER,
+});
 try {
   const database = createDrizzleInstance(pool);
   // Conflicts on the ICAO primary key and the unique registration make reruns no-ops.

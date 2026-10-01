@@ -28,9 +28,9 @@ Facts: [`facts.md`](facts.md). Backend code is written through the `implement-pl
    - `src/seed-data/airports.ts`: about 40 major airports, including RJTT and KSFO for the antimeridian case.
    - `src/seed-data/aircraft.ts`: about 8 real models with realistic cruise speed and altitude.
    - `src/seed.ts`.
-   - Scripts: a `db:seed` script in the package, a root `db:seed` script, and a turbo `db:seed` task (`cache: false`, env `DATABASE_URL`).
+   - Scripts: a `db:seed` script in the package, a root `db:seed` script, and a turbo `db:seed` task (`cache: false`, env `POSTGRES_*` and `DATABASE_NAME`).
    - Run `pnpm db:generate` to create the next migration (`0003_*`; main already has `0000`–`0002`).
-   - `DATABASE_URL` comes from the root `.env` (see `scripts/setup.mjs` and `drizzle.config.ts`); the seed script loads it the same way.
+   - The `POSTGRES_*` and `DATABASE_NAME` variables come from the root `.env` (see `scripts/setup.mjs` and `drizzle.config.ts`); the seed script loads them the same way.
    - Verify:
      - A package unit test checks the seed data: unique ICAO codes and registrations, valid lat/lon ranges, and 35–45 airports.
      - `pnpm db:migrate && pnpm db:seed` run twice produce the same row counts (checked with psql).

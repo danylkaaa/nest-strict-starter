@@ -10,7 +10,11 @@ describe('database module', () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it('makes the configured Drizzle client available to the application', async () => {
-    vi.stubEnv('postgres__url', 'postgresql://test:test@localhost:5432/test');
+    vi.stubEnv('POSTGRES_HOST', 'localhost');
+    vi.stubEnv('POSTGRES_PORT', '5432');
+    vi.stubEnv('POSTGRES_USER', 'test');
+    vi.stubEnv('POSTGRES_PASSWORD', 'test');
+    vi.stubEnv('DATABASE_NAME', 'test');
     vi.stubEnv('postgres__pool__max', '8');
     vi.stubEnv('postgres__pool__min', '1');
     vi.stubEnv('logger__level', 'silent');
@@ -24,6 +28,13 @@ describe('database module', () => {
 
     const db = module.get<Database>(getDrizzleToken());
     expect(db.$client.options.max).toBe(8);
+    expect(db.$client.options).toMatchObject({
+      database: 'test',
+      host: 'localhost',
+      password: 'test',
+      port: 5432,
+      user: 'test',
+    });
 
     await module.close();
   });

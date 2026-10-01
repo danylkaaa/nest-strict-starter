@@ -193,7 +193,9 @@ describe('webhook and aircraft report jobs', () => {
       const [queued] = await queue.boss.findJobs(name, { id: created.data.id });
       expect(queued?.retryLimit).toBe(3);
       expect(queued?.retryDelay).toBe(5);
-      expect(queued?.retryBackoff).toBe(false);
+      expect(queued?.retryBackoff).toBe(true);
+      expect(queued?.heartbeatSeconds).toBe(30);
+      expect(queued?.retryDelayMax).toBe(60);
     },
   );
 

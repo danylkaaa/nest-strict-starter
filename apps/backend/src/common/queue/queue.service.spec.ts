@@ -26,9 +26,17 @@ const existingQueue = (name: string): QueueResult => ({
   updatedOn: new Date(),
 });
 
+const connection = {
+  database: 'test',
+  host: 'localhost',
+  password: 'secret',
+  port: 5432,
+  user: 'test',
+};
+
 describe('queueService', () => {
   it('refuses startup when setup has not created a queue', async () => {
-    const queue = new QueueService('postgresql://test:secret@localhost:5432/test');
+    const queue = new QueueService(connection);
     const start = vi.spyOn(queue.boss, 'start').mockResolvedValue(queue.boss);
     const getQueue = vi.spyOn(queue.boss, 'getQueue').mockResolvedValue(null);
     const stop = vi.spyOn(queue.boss, 'stop').mockResolvedValue(undefined);
@@ -42,7 +50,7 @@ describe('queueService', () => {
   it.each([...QUEUES.entries()])(
     'refuses startup at queue %i when only that queue is missing',
     async (index, missing) => {
-      const queue = new QueueService('postgresql://test:secret@localhost:5432/test');
+      const queue = new QueueService(connection);
       vi.spyOn(queue.boss, 'start').mockResolvedValue(queue.boss);
       const getQueue = vi.spyOn(queue.boss, 'getQueue').mockResolvedValue(null);
       for (const name of QUEUES.slice(0, index))
@@ -56,7 +64,7 @@ describe('queueService', () => {
   );
 
   it('starts when every queue exists', async () => {
-    const queue = new QueueService('postgresql://test:secret@localhost:5432/test');
+    const queue = new QueueService(connection);
     vi.spyOn(queue.boss, 'start').mockResolvedValue(queue.boss);
     const getQueue = vi
       .spyOn(queue.boss, 'getQueue')
@@ -77,7 +85,7 @@ describe('queueService', () => {
   it('handles pg-boss errors without logging database details', () => {
     const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     try {
-      const queue = new QueueService('postgresql://test:secret@localhost:5432/test');
+      const queue = new QueueService(connection);
       expect(queue.boss.listenerCount('error')).toBeGreaterThan(0);
       expect(() => queue.boss.emit('error', new Error('secret database parameter'))).not.toThrow();
       expect(error).toHaveBeenCalledWith('pg-boss connection or maintenance failure');

@@ -38,7 +38,7 @@ const setup = async (execute: CallWebhookUseCase['execute']) => {
       Promise.resolve({ terminal: deadLetter || attempt >= 4 }),
     );
   const complete = vi.fn().mockResolvedValue(undefined);
-  const start = vi.fn().mockResolvedValue(undefined);
+  const start = vi.fn().mockResolvedValue(true);
   const logger = { info: vi.fn(), setContext: vi.fn(), warn: vi.fn() };
   const module = await Test.createTestingModule({
     providers: [
@@ -54,6 +54,17 @@ const setup = async (execute: CallWebhookUseCase['execute']) => {
 };
 
 describe('webhook job handler', () => {
+  it('does not call the webhook when a claimed batch child is cancelled', async () => {
+    const call = vi.fn<CallWebhookUseCase['execute']>();
+    const { complete, fail, handler, start } = await setup(call);
+    start.mockResolvedValue(false);
+
+    await expect(handler.handle(job(1))).resolves.toEqual({ id: 'job-1', status: 'deadletter' });
+    expect(call).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+  });
+
   it('calls the webhook with the job delivery key and completes with the call id', async () => {
     const execute = vi
       .fn<CallWebhookUseCase['execute']>()

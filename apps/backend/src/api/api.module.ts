@@ -28,7 +28,7 @@ import { JobsApiModule } from './endpoints/jobs/jobs.module.js';
     QueueModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ApiConfig],
-      useFactory: (config: ApiConfig) => config.postgres.url,
+      useFactory: (config: ApiConfig) => config.postgres,
     }),
     RequestContextModule,
     AppLoggerModule,

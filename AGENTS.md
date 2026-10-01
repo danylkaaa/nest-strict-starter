@@ -58,7 +58,7 @@ Single package: `pnpm --filter backend <script>`.
 - Package formatter configs re-export the root `oxfmt.config.ts`; do not fork formatting options per package
 - TypeScript stays on 6.x until Nest CLI supports TypeScript 7 (it needs the compiler API)
 - Config, secrets, and URLs come from environment variables; no hard-coded values. Commit `.env.example`, never `.env`
-- Local backend, database migration, pg-boss migration, seed, and Compose settings use the root `.env`; `scripts/setup.mjs` creates its `DATABASE_URL` from PostgreSQL settings and checks that an existing URL matches. It runs Drizzle migrations, the backend-owned pg-boss migration command, then the idempotent reference-data seed, so queues and reference data are ready before API or worker startup. This keeps local connections aligned. The setup command enforces the URL check and operation order; file placement is a convention.
+- Local backend, database migration, pg-boss migration, seed, and Compose settings use the root `.env`; there is no `DATABASE_URL`: every consumer reads `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`, `DATABASE_NAME`, and optional `POSTGRES_HOST` (default `localhost`), and `scripts/setup.mjs` validates them and passes them through. Compose containers override `POSTGRES_HOST=postgres` and `POSTGRES_PORT=5432` because `.env` holds the host-published port. `scripts/setup.mjs` runs Drizzle migrations, the backend-owned pg-boss migration command, then the idempotent reference-data seed, so queues and reference data are ready before API or worker startup. This keeps local connections aligned. The setup command enforces the variable check and operation order; file placement is a convention.
 
 ## Working Principles
 

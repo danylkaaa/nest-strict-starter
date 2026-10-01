@@ -335,6 +335,15 @@ describe('job management API', () => {
   });
 
   describe('attempts and retry', () => {
+    beforeAll(async () => {
+      // Earlier read-side cases leave eligible submissions behind. The worker in these cases
+      // should spend its time on the job under test, not retry that earlier queue backlog.
+      for (const queued of await queue.boss.findJobs(WEBHOOK_QUEUE)) {
+        if (queued.state === 'created' || queued.state === 'retry')
+          await queue.boss.cancel(WEBHOOK_QUEUE, queued.id);
+      }
+    });
+
     it('fails terminally after one attempt when maxAttempts is 1', async () => {
       const id = await submitWebhook(`one-${randomUUID()}`, { maxAttempts: 1 });
       const job = await withWorker(failingWebhookClient, async () =>

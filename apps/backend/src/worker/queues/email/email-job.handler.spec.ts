@@ -34,6 +34,7 @@ const setup = async (execute: SendEmailUseCase['execute']) => {
       Promise.resolve({ terminal: deadLetter || attempt >= 4 }),
     );
   const complete = vi.fn().mockResolvedValue(undefined);
+  const start = vi.fn().mockResolvedValue(true);
   const logger = { info: vi.fn(), setContext: vi.fn(), warn: vi.fn() };
   const module = await Test.createTestingModule({
     providers: [
@@ -42,16 +43,27 @@ const setup = async (execute: SendEmailUseCase['execute']) => {
       { provide: SendEmailUseCase, useValue: { execute } },
       {
         provide: StartJobAttemptUseCase,
-        useValue: { execute: vi.fn().mockResolvedValue(undefined) },
+        useValue: { execute: start },
       },
       { provide: FailJobAttemptUseCase, useValue: { execute: fail } },
       { provide: CompleteJobUseCase, useValue: { execute: complete } },
     ],
   }).compile();
-  return { complete, fail, handler: module.get(EmailJobHandler), logger };
+  return { complete, fail, handler: module.get(EmailJobHandler), logger, start };
 };
 
 describe('email job handler', () => {
+  it('does not send email when a claimed batch child is cancelled', async () => {
+    const send = vi.fn<SendEmailUseCase['execute']>();
+    const { complete, fail, handler, start } = await setup(send);
+    start.mockResolvedValue(false);
+
+    await expect(handler.handle(job(1))).resolves.toEqual({ id: 'job-1', status: 'deadletter' });
+    expect(send).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+  });
+
   it('completes the job with the sent email id', async () => {
     const { complete, fail, handler } = await setup(() => Promise.resolve(ok(sentEmail)));
     await expect(handler.handle(job(0))).resolves.toEqual({ id: 'job-1', status: 'completed' });

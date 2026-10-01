@@ -4,11 +4,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import { getDrizzleToken } from '@nestjs/drizzle';
 import { jobActivity, jobBatches, jobs } from '@workspace/database/schema';
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
-import { pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { fromDrizzle } from 'pg-boss';
 
 import { QueueService } from '@/common/queue/queue.service.js';
-import { retryPolicy } from '@/common/queue/retry-policy.js';
+import { HEARTBEAT_SECONDS, retryPolicy } from '@/common/queue/retry-policy.js';
 
 import type {
   ChildProgress,
@@ -22,21 +21,7 @@ import type { BatchInsert, JobRepository, JobTransition } from './ports/job.repo
 import type { QueueName } from '@/common/queue/queue.service.js';
 import type { Database } from '@workspace/database/client';
 
-/** Read-only view of the pg-boss job table, used to learn when a retry becomes eligible. */
-const queueJobs = pgSchema('pgboss').table('job', {
-  id: uuid('id').notNull(),
-  name: text('name').notNull(),
-  startAfter: timestamp('start_after', { withTimezone: true }).notNull(),
-});
-
-/**
- * The status the UI shows and filters on. The stored status is only written on transitions, so a
- * `scheduled` job whose eligibility time has passed is `pending`. The queue's `start_after` is
- * preferred because a retry delay moves it past the job's original `start_at`.
- */
-const effectiveStatus = sql<JobStatus>`CASE WHEN ${jobs.status} = 'scheduled' AND COALESCE(${queueJobs.startAfter}, ${jobs.startAt}) <= now() THEN 'pending' ELSE ${jobs.status} END`;
-
-const attemptCount = sql<number>`(SELECT count(*)::int FROM ${jobActivity} WHERE ${jobActivity.jobId} = ${jobs.id} AND ${jobActivity.event} = 'started')`;
+const attemptCount = sql<number>`(SELECT count(*)::int FROM ${jobActivity} WHERE ${jobActivity.jobId} = jobs.id AND ${jobActivity.event} = 'started')`;
 
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -57,7 +42,7 @@ const summaryColumns = {
   attempts: attemptCount,
   batchId: jobs.batchId,
   completedAt:
-    sql`CASE WHEN ${jobs.status} IN ('completed', 'failed', 'cancelled') THEN (SELECT max(${jobActivity.recordedAt}) FROM ${jobActivity} WHERE ${jobActivity.jobId} = ${jobs.id} AND ${jobActivity.event} IN ('completed', 'failed', 'cancelled')) END`.mapWith(
+    sql`CASE WHEN ${jobs.status} IN ('completed', 'failed', 'cancelled') THEN (SELECT max(${jobActivity.recordedAt}) FROM ${jobActivity} WHERE ${jobActivity.jobId} = jobs.id AND ${jobActivity.event} IN ('completed', 'failed', 'cancelled')) END`.mapWith(
       jobActivity.recordedAt,
     ),
   createdAt: jobs.createdAt,
@@ -65,14 +50,14 @@ const summaryColumns = {
   idempotencyKey: jobs.idempotencyKey,
   lastErrorCategory: sql<
     string | null
-  >`(SELECT ${jobActivity.errorCategory} FROM ${jobActivity} WHERE ${jobActivity.jobId} = ${jobs.id} AND ${jobActivity.event} = 'attempt_failed' ORDER BY ${jobActivity.recordedAt} DESC, ${jobActivity.id} DESC LIMIT 1)`,
+  >`(SELECT ${jobActivity.errorCategory} FROM ${jobActivity} WHERE ${jobActivity.jobId} = jobs.id AND ${jobActivity.event} = 'attempt_failed' ORDER BY ${jobActivity.recordedAt} DESC, ${jobActivity.id} DESC LIMIT 1)`,
   maxAttempts: jobs.maxAttempts,
   payload: jobs.payload,
   priority: jobs.priority,
   queue: jobs.queue,
   result: jobs.result,
   startAt: jobs.startAt,
-  status: effectiveStatus,
+  status: jobs.status,
 };
 
 const escapeLike = (value: string): string => value.replaceAll(/[\\%_]/gu, String.raw`\$&`);
@@ -83,6 +68,27 @@ export class DrizzleJobRepository implements JobRepository {
     @Inject(getDrizzleToken()) private readonly database: Database,
     private readonly queue: QueueService,
   ) {}
+
+  private async effectiveJobStatus(
+    row: Pick<JobSummary, 'id' | 'queue' | 'startAt' | 'status'>,
+    db?: ReturnType<typeof fromDrizzle>,
+    asOf = Date.now(),
+  ): Promise<JobStatus> {
+    if (row.status !== 'scheduled') return row.status;
+    const [queued] = await this.queue.boss.findJobs(row.queue, { db, id: row.id });
+    const eligibleAt = queued?.startAfter ?? row.startAt;
+    const eligibleTime =
+      eligibleAt instanceof Date ? eligibleAt.getTime() : Date.parse(String(eligibleAt));
+    return eligibleTime <= asOf ? 'pending' : 'scheduled';
+  }
+
+  private async effectiveSummary(
+    row: JobSummary,
+    db?: ReturnType<typeof fromDrizzle>,
+    asOf = Date.now(),
+  ): Promise<JobSummary> {
+    return { ...row, status: await this.effectiveJobStatus(row, db, asOf) };
+  }
 
   async findSubmission(idempotencyKey: string): Promise<string | null> {
     const [existing] = await this.database
@@ -199,6 +205,7 @@ export class DrizzleJobRepository implements JobRepository {
     const queuedId = await this.queue.boss.send(job.queue, job.payload, {
       ...retryPolicy(job.maxAttempts),
       db: fromDrizzle(tx, sql),
+      heartbeatSeconds: HEARTBEAT_SECONDS,
       id,
       priority: job.priority,
       startAfter: job.startAt,
@@ -217,12 +224,16 @@ export class DrizzleJobRepository implements JobRepository {
         const rows = await tx
           .select({ ...summaryColumns, position: sql<number>`${jobs.batchPosition} + 1` })
           .from(jobs)
-          .leftJoin(queueJobs, and(eq(queueJobs.name, jobs.queue), eq(queueJobs.id, jobs.id)))
           .where(eq(jobs.batchId, id))
           .orderBy(asc(jobs.batchPosition));
+        const asOf = Date.now();
+        const db = fromDrizzle(tx, sql);
+        const children: JobBatchChild[] = [];
+        for (const { position, ...job } of rows)
+          children.push({ job: await this.effectiveSummary(job, db, asOf), position });
         return {
           batch,
-          children: rows.map(({ position, ...job }) => ({ job, position })),
+          children,
         };
       },
       { accessMode: 'read only', isolationLevel: 'repeatable read' },
@@ -273,19 +284,34 @@ export class DrizzleJobRepository implements JobRepository {
           batches.length === 0
             ? []
             : await tx
-                .select({ attempts: attemptCount, batchId: jobs.batchId, status: effectiveStatus })
+                .select({
+                  attempts: attemptCount,
+                  batchId: jobs.batchId,
+                  id: jobs.id,
+                  queue: jobs.queue,
+                  startAt: jobs.startAt,
+                  status: jobs.status,
+                })
                 .from(jobs)
-                .leftJoin(queueJobs, and(eq(queueJobs.name, jobs.queue), eq(queueJobs.id, jobs.id)))
                 .where(
                   inArray(
                     jobs.batchId,
                     batches.map((batch) => batch.id),
                   ),
                 );
+        const asOf = Date.now();
+        const db = fromDrizzle(tx, sql);
+        const children: (ChildProgress & { batchId: string | null })[] = [];
+        for (const row of childRows)
+          children.push({
+            attempts: row.attempts,
+            batchId: row.batchId,
+            status: await this.effectiveJobStatus(row, db, asOf),
+          });
         return {
           items: batches.map((batch) => ({
             batch,
-            children: childRows
+            children: children
               .filter((child) => child.batchId === batch.id)
               .map(({ attempts, status }) => ({ attempts, status })),
           })),
@@ -300,9 +326,8 @@ export class DrizzleJobRepository implements JobRepository {
     id: string,
   ): Promise<'cancelled' | 'already_requested' | 'not_found' | 'not_cancellable'> {
     return this.database.transaction(async (tx) => {
-      // Lock order: batch row, then child rows by position, then their queue rows by position. A
-      // worker writing a transition locks only its child row first, so it never waits on us while
-      // we wait on it.
+      // Lock order: batch row, then child rows by position. The SDK's guarded update locks an
+      // unclaimed queue row through this transaction before cancellation checks its state.
       const [batch] = await tx.select().from(jobBatches).where(eq(jobBatches.id, id)).for('update');
       if (!batch) return 'not_found';
       if (batch.cancellationRequestedAt !== null) return 'already_requested';
@@ -312,17 +337,13 @@ export class DrizzleJobRepository implements JobRepository {
         .where(eq(jobs.batchId, id))
         .orderBy(asc(jobs.batchPosition))
         .for('update');
-      for (const child of children) {
-        await tx.execute(
-          sql`SELECT id FROM pgboss.job WHERE name = ${child.queue} AND id = ${child.id}::uuid FOR UPDATE`,
-        );
-      }
       const db = fromDrizzle(tx, sql);
       let hasOpenChild = false;
       for (const child of children) {
+        const locked = await this.queue.boss.update(child.queue, undefined, { db, id: child.id });
         const [queued] = await this.queue.boss.findJobs(child.queue, { db, id: child.id });
         const stored = !TERMINAL_STATUSES.has(child.status);
-        if (queued?.state === 'created' || queued?.state === 'retry') {
+        if (locked.updated === 1 && (queued?.state === 'created' || queued?.state === 'retry')) {
           hasOpenChild = true;
           await this.queue.boss.cancel(child.queue, child.id, { db });
           const [cancelled] = await this.queue.boss.findJobs(child.queue, { db, id: child.id });
@@ -344,13 +365,8 @@ export class DrizzleJobRepository implements JobRepository {
             .onConflictDoNothing();
         } else if (queued?.state === 'active') {
           hasOpenChild = true;
-          // pg-boss retries a failed job only while retry_count < retry_limit. Lowering the limit
-          // to the current count, under the row lock, makes this attempt the last one however it
-          // fails (result, crash, expiry). The stored status is normalized to `processing` because
-          // a failure recorded just before this lock would otherwise leave `scheduled` behind.
-          await tx.execute(
-            sql`UPDATE pgboss.job SET retry_limit = retry_count WHERE name = ${child.queue} AND id = ${child.id}::uuid AND state = 'active'`,
-          );
+          // The active attempt continues. If pg-boss retries it after a crash, the next claim
+          // observes cancellation_requested_at and dead-letters before any business side effect.
           if (child.status === 'scheduled' || child.status === 'pending')
             await tx
               .update(jobs)
@@ -370,31 +386,52 @@ export class DrizzleJobRepository implements JobRepository {
   }
 
   async getJob(id: string): Promise<JobSummary | null> {
-    const [row] = await this.database
-      .select(summaryColumns)
-      .from(jobs)
-      .leftJoin(queueJobs, and(eq(queueJobs.name, jobs.queue), eq(queueJobs.id, jobs.id)))
-      .where(eq(jobs.id, id));
-    return row ?? null;
+    const [row] = await this.database.select(summaryColumns).from(jobs).where(eq(jobs.id, id));
+    return row ? this.effectiveSummary(row) : null;
   }
 
   async listJobs(input: ListJobsInput): Promise<{ items: JobSummary[]; total: number }> {
     const pattern = input.search === undefined ? undefined : `%${escapeLike(input.search)}%`;
+    const needsEligibility =
+      input.statuses?.includes('pending') === true ||
+      input.statuses?.includes('scheduled') === true;
+    const candidateStatuses =
+      input.statuses === undefined
+        ? undefined
+        : needsEligibility
+          ? [...new Set<JobStatus>([...input.statuses, 'scheduled'])]
+          : input.statuses;
     // Batch children appear inside their batch and by direct ID, not as top-level entries.
     const where = and(
       isNull(jobs.batchId),
       input.queue === undefined ? undefined : eq(jobs.queue, input.queue),
-      input.statuses === undefined ? undefined : inArray(effectiveStatus, input.statuses),
+      candidateStatuses === undefined ? undefined : inArray(jobs.status, candidateStatuses),
       pattern === undefined
         ? undefined
         : or(ilike(sql`${jobs.id}::text`, pattern), ilike(sql`${jobs.payload}::text`, pattern)),
     );
-    const joinOn = and(eq(queueJobs.name, jobs.queue), eq(queueJobs.id, jobs.id));
+    if (needsEligibility) {
+      // Eligibility changes with time without a database write. Check every candidate before
+      // pagination so totals and page boundaries use the same effective status as item details.
+      const candidates = await this.database
+        .select(summaryColumns)
+        .from(jobs)
+        .where(where)
+        .orderBy(desc(jobs.createdAt), desc(jobs.id));
+      const matching: JobSummary[] = [];
+      for (const candidate of candidates) {
+        const item = await this.effectiveSummary(candidate);
+        if (input.statuses?.includes(item.status)) matching.push(item);
+      }
+      return {
+        items: matching.slice((input.page - 1) * input.pageSize, input.page * input.pageSize),
+        total: matching.length,
+      };
+    }
     const [items, [counted]] = await Promise.all([
       this.database
         .select(summaryColumns)
         .from(jobs)
-        .leftJoin(queueJobs, joinOn)
         .where(where)
         .orderBy(desc(jobs.createdAt), desc(jobs.id))
         .limit(input.pageSize)
@@ -402,28 +439,45 @@ export class DrizzleJobRepository implements JobRepository {
       this.database
         .select({ total: sql<number>`count(*)::int` })
         .from(jobs)
-        .leftJoin(queueJobs, joinOn)
         .where(where),
     ]);
-    return { items, total: counted?.total ?? 0 };
+    const effectiveItems: JobSummary[] = [];
+    for (const item of items) effectiveItems.push(await this.effectiveSummary(item));
+    return { items: effectiveItems, total: counted?.total ?? 0 };
   }
 
   async countJobsByStatus(): Promise<Record<JobStatus, number>> {
-    const rows = await this.database
-      .select({ count: sql<number>`count(*)::int`, status: effectiveStatus })
-      .from(jobs)
-      .leftJoin(queueJobs, and(eq(queueJobs.name, jobs.queue), eq(queueJobs.id, jobs.id)))
-      .groupBy(effectiveStatus);
-    const counts: Record<JobStatus, number> = {
-      cancelled: 0,
-      completed: 0,
-      failed: 0,
-      pending: 0,
-      processing: 0,
-      scheduled: 0,
-    };
-    for (const row of rows) counts[row.status] = row.count;
-    return counts;
+    return this.database.transaction(
+      async (tx) => {
+        const asOf = Date.now();
+        const rows = await tx
+          .select({ count: sql<number>`count(*)::int`, status: jobs.status })
+          .from(jobs)
+          .groupBy(jobs.status);
+        const counts: Record<JobStatus, number> = {
+          cancelled: 0,
+          completed: 0,
+          failed: 0,
+          pending: 0,
+          processing: 0,
+          scheduled: 0,
+        };
+        for (const row of rows) counts[row.status] = row.count;
+        const scheduled = await tx
+          .select({ id: jobs.id, queue: jobs.queue, startAt: jobs.startAt, status: jobs.status })
+          .from(jobs)
+          .where(eq(jobs.status, 'scheduled'));
+        const db = fromDrizzle(tx, sql);
+        for (const row of scheduled) {
+          if ((await this.effectiveJobStatus(row, db, asOf)) === 'pending') {
+            counts.scheduled -= 1;
+            counts.pending += 1;
+          }
+        }
+        return counts;
+      },
+      { accessMode: 'read only', isolationLevel: 'repeatable read' },
+    );
   }
 
   async isHealthy(): Promise<boolean> {
@@ -497,18 +551,18 @@ export class DrizzleJobRepository implements JobRepository {
       const [row] = await tx.select().from(jobs).where(eq(jobs.id, id)).for('update');
       if (!row) return 'not_found';
       if (row.status !== 'scheduled' && row.status !== 'pending') return 'not_cancellable';
-      await tx.execute(
-        sql`SELECT id FROM pgboss.job WHERE name = ${queue} AND id = ${id}::uuid FOR UPDATE`,
-      );
+      const db = fromDrizzle(tx, sql);
+      const locked = await this.queue.boss.update(queue, undefined, { db, id });
+      if (locked.updated !== 1) return 'not_cancellable';
       const [queueJob] = await this.queue.boss.findJobs(queue, {
-        db: fromDrizzle(tx, sql),
+        db,
         id,
       });
       if (!queueJob || (queueJob.state !== 'created' && queueJob.state !== 'retry'))
         return 'not_cancellable';
-      await this.queue.boss.cancel(queue, id, { db: fromDrizzle(tx, sql) });
+      await this.queue.boss.cancel(queue, id, { db });
       const [cancelled] = await this.queue.boss.findJobs(queue, {
-        db: fromDrizzle(tx, sql),
+        db,
         id,
       });
       if (cancelled?.state !== 'cancelled') return 'not_cancellable';
@@ -534,9 +588,6 @@ export class DrizzleJobRepository implements JobRepository {
       const [row] = await tx.select().from(jobs).where(eq(jobs.id, id)).for('update');
       if (!row) return 'not_found';
       if (row.status !== 'failed') return 'not_retryable';
-      await tx.execute(
-        sql`SELECT id FROM pgboss.job WHERE name = ${queue} AND id = ${id}::uuid FOR UPDATE`,
-      );
       const db = fromDrizzle(tx, sql);
       const [queueJob] = await this.queue.boss.findJobs(queue, { db, id });
       if (queueJob?.state !== 'failed') return 'not_retryable';
@@ -574,41 +625,47 @@ export class DrizzleJobRepository implements JobRepository {
       let { status } = transition;
       const logs = [...transition.logs];
       const failure = transition.failedAttemptInCancelledBatch;
-      if (failure) {
-        // Holding the child row lock orders this write against a batch cancellation, which locks
-        // the same row: either we see its committed request here, or it sees our written status.
-        const [batched] = await tx
-          .select({ cancellationRequestedAt: jobBatches.cancellationRequestedAt })
+      const skipped = transition.skipIfBatchCancelled;
+      if (failure || skipped) {
+        // Take the child lock in a separate statement. Under READ COMMITTED, a joined read that
+        // begins while cancellation holds this lock can see the old batch timestamp even after
+        // it unblocks; the following statement gets a fresh snapshot after cancellation commits.
+        const [locked] = await tx
+          .select({ batchId: jobs.batchId })
           .from(jobs)
-          .innerJoin(jobBatches, eq(jobBatches.id, jobs.batchId))
           .where(eq(jobs.id, id))
-          .for('update', { of: jobs });
-        if (batched?.cancellationRequestedAt) {
+          .for('update');
+        const [batch] = locked?.batchId
+          ? await tx
+              .select({ cancellationRequestedAt: jobBatches.cancellationRequestedAt })
+              .from(jobBatches)
+              .where(eq(jobBatches.id, locked.batchId))
+          : [];
+        if (batch?.cancellationRequestedAt) {
           status = 'failed';
+          if (skipped)
+            logs.push({
+              attempt: skipped.attempt,
+              errorCategory: 'batch_cancelled',
+              event: 'attempt_failed',
+              eventKey: `attempt_failed:${skipped.attempt}`,
+            });
           logs.push({
-            attempt: failure.attempt,
-            errorCategory: failure.category,
+            attempt: failure?.attempt ?? skipped?.attempt,
+            errorCategory: failure?.category ?? 'batch_cancelled',
             event: 'failed',
-            eventKey: `failed:${failure.attempt}`,
+            eventKey: `failed:${failure?.attempt ?? skipped?.attempt}`,
           });
         }
       }
-      const [updated] = await tx
+      await tx
         .update(jobs)
         .set({
           ...(transition.result === undefined ? {} : { result: transition.result }),
           status,
           updatedAt: new Date(),
         })
-        .where(eq(jobs.id, id))
-        .returning({ queue: jobs.queue });
-      if (transition.retryDelaySeconds !== undefined && updated) {
-        // pg-boss `update` refuses active jobs, and the attempt is active when it starts, so the
-        // column is written directly (like the row locks above). pg-boss reads it on failure.
-        await tx.execute(
-          sql`UPDATE pgboss.job SET retry_delay = ${transition.retryDelaySeconds} WHERE name = ${updated.queue} AND id = ${id}::uuid`,
-        );
-      }
+        .where(eq(jobs.id, id));
       for (const log of logs) {
         await tx
           .insert(jobActivity)

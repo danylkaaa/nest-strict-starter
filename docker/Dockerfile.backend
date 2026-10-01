@@ -13,8 +13,6 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 
 COPY apps/backend apps/backend
 COPY packages/database packages/database
-COPY docker/with-database-url.sh docker/with-database-url.sh
 RUN pnpm --filter @workspace/database build && pnpm --filter backend build
 
-ENTRYPOINT ["sh", "/app/docker/with-database-url.sh"]
 CMD ["pnpm", "--filter", "backend", "start"]

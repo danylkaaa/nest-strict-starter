@@ -13,12 +13,15 @@ import { setupSwagger } from '@/api/core/swagger/swagger.config.js';
 import { QueueService } from '@/common/queue/queue.service.js';
 import { SIMULATION_DELAY } from '@/modules/aircraft-transits/ports/simulation-delay.js';
 import { EMAIL_CLIENT } from '@/modules/emails/ports/email-client.js';
+import { JOB_REPOSITORY } from '@/modules/jobs/ports/job.repository.js';
 import { FailJobAttemptUseCase } from '@/modules/jobs/use-case/fail-job-attempt.use-case.js';
+import { StartJobAttemptUseCase } from '@/modules/jobs/use-case/start-job-attempt.use-case.js';
 import { WEBHOOK_CLIENT } from '@/modules/webhooks/ports/webhook-client.js';
 import { WebhookDeliveryFailedError } from '@/modules/webhooks/webhook.errors.js';
 import { WorkerModule } from '@/worker/worker.module.js';
 
 import type { QueueName } from '@/common/queue/queue.service.js';
+import type { JobRepository } from '@/modules/jobs/ports/job.repository.js';
 import type { INestApplication } from '@nestjs/common';
 import type { Database } from '@workspace/database/client';
 
@@ -161,6 +164,47 @@ describe('job batches', () => {
     throw new Error(`Batch did not reach ${status} in 30 seconds.`);
   };
 
+  const waitForBlockedChildLock = async (): Promise<void> => {
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const blocked = await database.execute(sql`
+        SELECT count(*)::int AS total FROM pg_stat_activity
+        WHERE pid <> pg_backend_pid() AND wait_event_type = 'Lock'
+          AND lower(query) LIKE '%jobs%' AND lower(query) LIKE '%for update%'
+      `);
+      if (Number(blocked.rows[0]?.total) > 0) return;
+      await sleep(25);
+    }
+    throw new Error('The job transition did not wait for the child row lock.');
+  };
+
+  const transitionAfterBlockedCancellation = async <T>(
+    batchId: string,
+    childId: string,
+    transition: () => Promise<T>,
+  ): Promise<T> => {
+    const locked = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const cancelling = database.transaction(async (tx) => {
+      await tx.select().from(jobBatches).where(eq(jobBatches.id, batchId)).for('update');
+      await tx.select().from(jobs).where(eq(jobs.id, childId)).for('update');
+      locked.resolve();
+      await release.promise;
+      await tx
+        .update(jobBatches)
+        .set({ cancellationRequestedAt: new Date() })
+        .where(eq(jobBatches.id, batchId));
+    });
+    await locked.promise;
+    const changing = transition();
+    try {
+      await waitForBlockedChildLock();
+    } finally {
+      release.resolve();
+    }
+    await cancelling;
+    return changing;
+  };
+
   beforeAll(async () => {
     const apiModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
     api = apiModule.createNestApplication({ logger: false });
@@ -210,6 +254,72 @@ describe('job batches', () => {
       expect(events.map((event) => event.event)).toEqual(['created']);
     }
   });
+
+  it('uses one eligibility instant for every scheduled sibling in detail and list reads', async () => {
+    const id = await createBatch({ ...scheduled(), items: [emailItem, webhookItem] });
+    const [first] = await childRows(id);
+    const threshold = Number(first?.startAt.getTime());
+    expect(threshold).toBeGreaterThan(0);
+    const repository = api.get<JobRepository>(JOB_REPOSITORY, { strict: false });
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(threshold - 1);
+    const findJobs = queue.boss.findJobs.bind(queue.boss);
+    let reads = 0;
+    const advanceAfterFirstRead = [() => clock.mockReturnValue(threshold + 1)];
+    const queueRead = vi.spyOn(queue.boss, 'findJobs').mockImplementation(async (name, options) => {
+      reads += 1;
+      const found = await findJobs(name, options);
+      advanceAfterFirstRead[reads - 1]?.();
+      return found;
+    });
+    try {
+      const detail = await repository.getJobBatch(id);
+      expect(detail?.children.map((child) => child.job.status)).toEqual(['scheduled', 'scheduled']);
+      expect(reads).toBe(2);
+      clock.mockReturnValue(threshold - 1);
+      reads = 0;
+      const list = await repository.listJobBatches({ page: 1, pageSize: 100 });
+      expect(list.items.find((item) => item.batch.id === id)?.children).toMatchObject([
+        { status: 'scheduled' },
+        { status: 'scheduled' },
+      ]);
+      expect(reads).toBeGreaterThanOrEqual(2);
+    } finally {
+      queueRead.mockRestore();
+      clock.mockRestore();
+    }
+  });
+
+  it('observes committed batch cancellation after a blocked child start', async () => {
+    const id = await createBatch({ ...scheduled(), items: [emailItem] });
+    const child = await childAt(id, 0);
+    await claim(child.queue, child.id);
+    const started = await transitionAfterBlockedCancellation(id, child.id, () =>
+      api.get(StartJobAttemptUseCase, { strict: false }).execute(child.id, 1),
+    );
+    expect(started).toBe(false);
+    const [stored] = await database
+      .select({ status: jobs.status })
+      .from(jobs)
+      .where(eq(jobs.id, child.id));
+    expect(stored?.status).toBe('failed');
+  }, 15_000);
+
+  it('observes committed batch cancellation after a blocked child failure', async () => {
+    const id = await createBatch({ ...scheduled(), items: [emailItem] });
+    const child = await childAt(id, 0);
+    await claim(child.queue, child.id);
+    const outcome = await transitionAfterBlockedCancellation(id, child.id, () =>
+      api
+        .get(FailJobAttemptUseCase, { strict: false })
+        .execute(child.id, 1, 'delivery_failed', false),
+    );
+    expect(outcome).toEqual({ terminal: true });
+    const [stored] = await database
+      .select({ status: jobs.status })
+      .from(jobs)
+      .where(eq(jobs.id, child.id));
+    expect(stored?.status).toBe('failed');
+  }, 15_000);
 
   it('reports a used batch key with the existing ID and an unknown batch as 404', async () => {
     const body = { ...scheduled(), items: [emailItem] };
@@ -331,7 +441,7 @@ describe('job batches', () => {
     expect((await request(`/job-batches/${randomUUID()}/activity`, 'GET')).status).toBe(404);
   });
 
-  it('keeps a claimed child active and denies it another attempt', async () => {
+  it('keeps a claimed child active and skips its next attempt after cancellation', async () => {
     const id = await createBatch({ ...scheduled(), items: [emailItem, webhookItem] });
     const first = await childAt(id, 0);
     const second = await childAt(id, 1);
@@ -344,18 +454,24 @@ describe('job batches', () => {
       status: 'cancelling',
     });
     const [active] = await queue.boss.findJobs(first.queue, { id: first.id });
-    expect(active).toMatchObject({ retryLimit: active?.retryCount, state: 'active' });
+    expect(active?.state).toBe('active');
     const [untouched] = await queue.boss.findJobs(second.queue, { id: second.id });
     expect(untouched?.state).toBe('cancelled');
 
-    // A failure after the request is terminal for the job row and in pg-boss.
+    // The current failure marks the application job terminal. pg-boss may still schedule a retry;
+    // the next claim checks batch intent and dead-letters without running business work.
     const outcome = await api
       .get(FailJobAttemptUseCase, { strict: false })
       .execute(first.id, 1, 'delivery_failed', false);
     expect(outcome).toEqual({ terminal: true });
     await queue.boss.fail(first.queue, first.id);
-    const [failed] = await queue.boss.findJobs(first.queue, { id: first.id });
-    expect(failed?.state).toBe('failed');
+    const [retrying] = await queue.boss.findJobs(first.queue, { id: first.id });
+    expect(retrying?.state).toBe('retry');
+    await queue.boss.update(first.queue, undefined, { id: first.id, startAfter: new Date() });
+    await claim(first.queue, first.id);
+    expect(await api.get(StartJobAttemptUseCase, { strict: false }).execute(first.id, 2)).toBe(
+      false,
+    );
     expect(await waitForBatch(id, 'cancelled')).toMatchObject({
       counts: { cancelled: 1, failed: 1 },
     });

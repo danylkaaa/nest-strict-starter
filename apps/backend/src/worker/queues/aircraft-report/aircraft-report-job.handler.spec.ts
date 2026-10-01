@@ -57,7 +57,7 @@ const setup = async (execute: GenerateAircraftTransitReportUseCase['execute']) =
       Promise.resolve({ terminal: deadLetter || attempt >= 4 }),
     );
   const complete = vi.fn().mockResolvedValue(undefined);
-  const start = vi.fn().mockResolvedValue(undefined);
+  const start = vi.fn().mockResolvedValue(true);
   const logger = { info: vi.fn(), setContext: vi.fn(), warn: vi.fn() };
   const module = await Test.createTestingModule({
     providers: [
@@ -73,6 +73,17 @@ const setup = async (execute: GenerateAircraftTransitReportUseCase['execute']) =
 };
 
 describe('aircraft report job handler', () => {
+  it('does not generate a report when a claimed batch child is cancelled', async () => {
+    const generate = vi.fn<GenerateAircraftTransitReportUseCase['execute']>();
+    const { complete, fail, handler, start } = await setup(generate);
+    start.mockResolvedValue(false);
+
+    await expect(handler.handle(job(1))).resolves.toEqual({ id: 'job-1', status: 'deadletter' });
+    expect(generate).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+  });
+
   it('generates the report for the job and completes with the report id', async () => {
     const execute = vi
       .fn<GenerateAircraftTransitReportUseCase['execute']>()

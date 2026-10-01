@@ -44,10 +44,10 @@ export interface JobTransition {
    * this attempt instead of `status`; the decision is made under the job row lock.
    */
   failedAttemptInCancelledBatch?: { attempt: number; category: string };
+  /** A newly claimed child skips work if its batch cancellation was already committed. */
+  skipIfBatchCancelled?: { attempt: number };
   status: Job['status'];
   result?: JobResult;
-  /** Sets the pg-boss job's fixed retry delay in the same transaction. */
-  retryDelaySeconds?: number;
   logs: JobLogWrite[];
 }
 
@@ -80,7 +80,7 @@ export interface JobRepository {
   ): Promise<void>;
   listProcessingJobs(): Promise<{ id: string; queue: QueueName }[]>;
   cancelJob(queue: QueueName, id: string): Promise<'cancelled' | 'not_found' | 'not_cancellable'>;
-  /** Grants one more attempt to a failed job in one transaction with the queue-row lock. */
+  /** Grants one more attempt to a failed job in one transaction using the queue SDK. */
   retryJob(queue: QueueName, id: string): Promise<'retried' | 'not_found' | 'not_retryable'>;
   /** Writes the transition in one transaction and returns the status that was stored. */
   writeJobTransition(id: string, transition: JobTransition): Promise<Job['status']>;
@@ -91,7 +91,7 @@ export interface JobRepository {
    * transaction under the batch key's advisory lock; any failure leaves nothing behind.
    */
   createBatch(input: BatchInsert): Promise<{ id: string; startAt: Date; duplicate: boolean }>;
-  /** The batch and its children in position order, read from one database snapshot. */
+  /** The batch and its children in position order, with queue status read through the SDK. */
   getJobBatch(id: string): Promise<{ batch: JobBatchRecord; children: JobBatchChild[] } | null>;
   /**
    * The batch row and every activity event of its children (1-100 children, a handful of events
@@ -100,13 +100,13 @@ export interface JobRepository {
   getJobBatchActivity(
     id: string,
   ): Promise<{ batch: JobBatchRecord; rows: JobBatchActivityRow[] } | null>;
-  /** Page of batches (newest first) with their children's progress figures, from one snapshot. */
+  /** Page of batches (newest first) with their children's progress figures. */
   listJobBatches(
     input: ListJobBatchesInput,
   ): Promise<{ items: { batch: JobBatchRecord; children: ChildProgress[] }[]; total: number }>;
   /**
-   * Records the cancellation request once and cancels every unclaimed child in one transaction
-   * that locks the batch row, then the child rows and queue rows in position order.
+   * Records the cancellation request once and cancels every unclaimed child in one transaction.
+   * Active children finish or fail normally; a later claim observes the cancellation intent.
    */
   cancelJobBatch(
     id: string,

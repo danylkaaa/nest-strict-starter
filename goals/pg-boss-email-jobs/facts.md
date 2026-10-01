@@ -5,7 +5,7 @@
 - The existing POST /api/emails remains synchronous and keeps its current response behavior.
 - An instant email job is eligible immediately; a schedule job is held by pg-boss until its future startAt timestamp. A schedule job without a valid future startAt is rejected.
 - A separately started Nest worker uses a reusable pg-boss module and job-handler decorator to consume email jobs, validates each payload, calls SendEmailUseCase, and completes the job only after successful delivery and persistence.
-- A valid email job has at most four processing attempts: the first attempt and up to three retries, starting 60 seconds after failure with exponential backoff. Invalid queue payloads fail without retry.
+- A valid email job defaults to four processing attempts (the first attempt and up to three retries); a submission may choose 1–10 attempts. Automatic retries use pg-boss exponential backoff with jitter from a five-second base, capped at 60 seconds, including after a crash or expiry. Invalid queue payloads fail without retry.
 - The application database retains timestamped, ordered activity for job creation, each processing start, each failed attempt, cancellation, successful completion, and final failure, including a safe error category without email body or recipient data.
 - GET /api/jobs/:id returns an email job's current status (scheduled, pending, processing, cancelled, completed, or failed), scheduled time, and ordered activity, and returns the API's normal not-found error for an unknown ID.
 - DELETE /api/jobs/:id cancels a scheduled or pending job and records cancellation activity; a processing, completed, failed, or already cancelled job cannot be cancelled, and an unknown ID returns the API's normal not-found error.

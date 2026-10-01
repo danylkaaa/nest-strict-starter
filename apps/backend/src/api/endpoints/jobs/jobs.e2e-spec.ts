@@ -172,7 +172,8 @@ describe('email jobs API and worker', () => {
     expect(queued?.priority).toBe(5);
     expect(queued?.retryLimit).toBe(3);
     expect(queued?.retryDelay).toBe(5);
-    expect(queued?.retryBackoff).toBe(false);
+    expect(queued?.retryBackoff).toBe(true);
+    expect(queued?.retryDelayMax).toBe(60);
   });
 
   it('documents job error envelopes in OpenAPI', async () => {
@@ -468,11 +469,11 @@ describe('email jobs API and worker', () => {
     expect(row?.status).toBe('failed');
   });
 
-  it('delays the next attempt by 5, 10, then 30 seconds after each failure', async () => {
+  it('increases retry delays exponentially and caps them at sixty seconds', async () => {
     const createResponse = await fetch(`${baseUrl}/api/jobs/email`, {
       body: JSON.stringify({
         idempotencyKey: randomUUID(),
-        maxAttempts: 5,
+        maxAttempts: 6,
         payload,
         priority: 5,
         type: 'instant',
@@ -483,7 +484,14 @@ describe('email jobs API and worker', () => {
     const created = createdSchema.parse(await createResponse.json());
     expect(createResponse.status).toBe(202);
     const id = created.data.id;
-    for (const [index, delaySeconds] of [5, 10, 30, 30].entries()) {
+    const delayRanges = [
+      [5, 10],
+      [10, 20],
+      [20, 40],
+      [40, 60],
+      [60, 60],
+    ] as const;
+    for (const [index, [minDelay, maxDelay]] of delayRanges.entries()) {
       const attempt = index + 1;
       const claims = await queue.boss.fetch(EMAIL_QUEUE, {
         batchSize: 100,
@@ -499,8 +507,8 @@ describe('email jobs API and worker', () => {
       const [queued] = await queue.boss.findJobs(EMAIL_QUEUE, { id });
       expect(queued?.state).toBe('retry');
       const startAfter = Number(queued?.startAfter.getTime());
-      expect(startAfter).toBeGreaterThanOrEqual(before + delaySeconds * 1000 - 2000);
-      expect(startAfter).toBeLessThanOrEqual(after + delaySeconds * 1000 + 2000);
+      expect(startAfter).toBeGreaterThanOrEqual(before + minDelay * 1000 - 2000);
+      expect(startAfter).toBeLessThanOrEqual(after + maxDelay * 1000 + 2000);
       // The public status follows the delay: scheduled while waiting, pending once it passes.
       const waiting = jobSchema.parse(await (await fetch(`${baseUrl}/api/jobs/${id}`)).json());
       expect(waiting.data.status).toBe('scheduled');
@@ -508,7 +516,7 @@ describe('email jobs API and worker', () => {
     }
   }, 20_000);
 
-  it('records a failed attempt and schedules the retry after 5 seconds', async () => {
+  it('records a failed attempt and schedules the retry with backoff', async () => {
     const failing = await Test.createTestingModule({ imports: [WorkerModule] })
       .overrideProvider(EMAIL_CLIENT)
       .useValue({ send: () => Promise.resolve(err(new EmailDeliveryFailedError())) })
@@ -535,7 +543,7 @@ describe('email jobs API and worker', () => {
       ]);
       const [queued] = await queue.boss.findJobs(EMAIL_QUEUE, { id: created.data.id });
       expect(queued?.state).toBe('retry');
-      expect(queued?.startAfter.getTime()).toBeLessThan(Date.now() + 8000);
+      expect(queued?.startAfter.getTime()).toBeLessThan(Date.now() + 12_000);
       for (const [index, state] of ['retry', 'retry', 'failed'].entries()) {
         const attempt = index + 2;
         const expedited = await queue.boss.update(EMAIL_QUEUE, undefined, {

@@ -11,12 +11,29 @@ export const AIRCRAFT_REPORT_QUEUE = 'aircraft-report';
 export const QUEUES = [EMAIL_QUEUE, WEBHOOK_QUEUE, AIRCRAFT_REPORT_QUEUE] as const;
 export type QueueName = (typeof QUEUES)[number];
 
+/** PostgreSQL connection fields pg-boss accepts; a `DatabaseConfig` satisfies it. */
+export interface QueueConnection {
+  readonly database: string;
+  readonly host: string;
+  readonly password: string;
+  readonly port: number;
+  readonly user: string;
+}
+
 export class QueueService implements OnModuleInit, OnModuleDestroy {
   readonly boss: PgBoss;
   private readonly logger = new Logger(QueueService.name);
 
-  constructor(url: string) {
-    this.boss = new PgBoss({ connectionString: url, createSchema: false, migrate: false });
+  constructor(connection: QueueConnection) {
+    this.boss = new PgBoss({
+      createSchema: false,
+      database: connection.database,
+      host: connection.host,
+      migrate: false,
+      password: connection.password,
+      port: connection.port,
+      user: connection.user,
+    });
     this.boss.on('error', () => {
       this.logger.error('pg-boss connection or maintenance failure');
     });
